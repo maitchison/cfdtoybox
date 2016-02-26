@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<title>Experiment 1 - Drag coefficents</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=620">
+<style>
+	body {background-color:#ffffff; font-family:Arial, sans-serif; font-size:14px;
+					text-align:center;}						/* gray background, center everything */
+	p {margin-left:auto; margin-right:auto; width:600px;}	/* keep paragraphs narrow and centered */
+	input {font-size:115%;}									/* make buttons bigger */
+	input[type="range"] {width:90px;}						/* make sliders shorter */
+	select {font-size:115%;}								/* make selectors bigger too */
+	li {text-align:left;}
+</style>
+<style type="text/css"></style></head>
+
+<body>
+
+<h2>Fluid Dynamics Simulation</h2>
+
+<p>By Matthew Aitchison</p> 
+
+<canvas id="theCanvas" width="600" height="240">This application runs only in modern
+browsers. For best results, use Google Chrome.</canvas>
+
+<div>
+	<input id="resetFluidButton" type="button" onclick="initFluid()" value="Reset fluid">
+	<input id="stepButton" type="button" onclick="simulate()" value="Step">
+	<input id="startButton" type="button" onclick="startStop()" value="Start">
+</div>
+<p style="text-align:left">
+In this experiemnt we will test the effects of drag on an object under various conditions.
+
+
+<script src="./Fluid Dynamics Simulation_files/barrierdata.js"></script>
+<script src="lattice_boltzmann.js"></script>   
+
+</body></html>
