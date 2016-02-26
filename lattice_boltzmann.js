@@ -1,17 +1,27 @@
+"use strict";
 
 // Config variables:
 var config  = {
+    // steps per draw (affects presentation speed of simulation)
     steps: 20,
+    // speed fluid travels at
     speed: 0.1,
-    viscosity: 0.020,       
+    viscosity: 0.040,       
     contrast: 1.0,
-    pxPerSquare:5,
+    pxPerSquare:4,
     plotSelect:4,
+    barrierTemplate:6,
     
     tracers:false,
     flowline:false,
     sensor:false,
-    showForce:false
+    showForce:true
+};
+
+// Used to present results.
+var ui = {
+    // the label to display drag force on
+    dragLabel: null
 };
 
 if (mobile) config.pxPerSquare = 10; // downsample more on mobile platforms
@@ -28,7 +38,6 @@ var ydim = canvas.height / config.pxPerSquare;
 
 var startButton = document.getElementById('startButton');    
 var mouseSelect = document.getElementById('mouseSelect');
-var barrierSelect = document.getElementById('barrierSelect');
 
 var tracerCheck = document.getElementById('tracerCheck');
 var flowlineCheck = document.getElementById('flowlineCheck');
@@ -87,20 +96,18 @@ var uy = new Array(xdim*ydim);
 var curl = new Array(xdim*ydim);
 var barrier = new Array(xdim*ydim);		// boolean array of barrier locations
 
-// Initialize to a steady rightward flow with no barriers:
-for (var y=0; y<ydim; y++) {
-    for (var x=0; x<xdim; x++) {
-        barrier[x+y*xdim] = false;
-    }
-}
+// Initialize barriers
+placePresetBarrier(config.barrierTemplate)
+
 
 // Create a simple linear "wall" barrier (intentionally a little offset from center):
-var barrierSize = 8;
-if (mobile) barrierSize = 4;
-for (var y=(ydim/2)-barrierSize; y<=(ydim/2)+barrierSize; y++) {
-    var x = Math.round(ydim/3);
-    barrier[x+y*xdim] = true;
-}
+
+//var barrierSize = 8;
+//if (mobile) barrierSize = 4;
+//for (var y=(ydim/2)-barrierSize; y<=(ydim/2)+barrierSize; y++) {
+//  var x = Math.round(ydim/3);
+//    barrier[x+y*xdim] = true;
+//}
 
 // Set up the array of colors for plotting (mimicks matplotlib "jet" colormap):
 // (Kludge: Index nColors+1 labels the color used for drawing barriers.)
@@ -166,8 +173,19 @@ window.requestAnimFrame = (function(callback) {
         };
 })();
 
+var lastUpdate = 0;
+var lastFPSUpdate = 0;
+
 // Simulate function executes a bunch of steps and then schedules another call to itself:
 function simulate() {
+    
+    // que the next frame
+    if (running) {
+        requestAnimFrame(function() { simulate(); });	// let browser schedule next frame                
+    }
+    
+    
+    
     var stepsPerFrame = Number(config.steps);			// number of simulation steps per animation frame
     setBoundaries();
     // Test to see if we're dragging the fluid:
@@ -209,12 +227,20 @@ function simulate() {
     paintCanvas();
     if (collectingData) {
         writeData();
-        if (time >= 10000) startOrStopData();
+        if (time >= 10000) startOrStopData();               
     }
+    
+    var currentTime = new Date().getTime()
+    var frameTime = (currentTime - lastUpdate) / 1000;
+    
     if (running) {
         stepCount += stepsPerFrame;
-        var elapsedTime = ((new Date()).getTime() - startTime) / 1000;	// time in seconds
-        //speedReadout.innerHTML = Number(stepCount/elapsedTime).toFixed(0);
+        var elapsedTime = (currentTime - startTime) / 1000;	// time in seconds
+        if (ui.fpsLabel != null && frameTime > 0 && currentTime > lastFPSUpdate + 1000) {
+            //ui.fpsLabel.innerHTML = Number(stepCount/elapsedTime).toFixed(0);
+            ui.fpsLabel.innerHTML = Number(1/frameTime).toFixed(1);
+            lastFPSUpdate = currentTime
+        }
     }
     var stable = true;
     for (var x=0; x<xdim; x++) {
@@ -225,14 +251,8 @@ function simulate() {
         window.alert("The simulation has become unstable due to excessive fluid speeds.");
         startStop();
         initFluid();
-    }
-    if (running) {
-        if (true) {
-            requestAnimFrame(function() { simulate(); });	// let browser schedule next frame
-        } else {
-            window.setTimeout(simulate, 1);	// schedule next frame asap (nominally 1 ms but always more)
-        }
-    }
+    }    
+    lastUpdate = new Date().getTime()
 }
 
 // Set the fluid variables at the boundaries, according to the current slider value:
@@ -459,13 +479,19 @@ function paintCanvas() {
     }
     //if (pixelGraphics) 
     context.putImageData(image, 0, 0);		// blast image to the screen
-    // Draw tracers, force vector, and/or sensor if appropriate:
-    
-    // todo: put some of these back in.
+    // Draw tracers, force vector, and/or sensor if appropriate:        
     if (config.tracers) drawTracers();
     if (config.flowline) drawFlowlines();
-    if (config.showforce) drawForceArrow(barrierxSum/barrierCount, barrierySum/barrierCount, barrierFx, barrierFy);
+    if (config.showForce) drawForceArrow(barrierxSum/barrierCount, barrierySum/barrierCount, barrierFx, barrierFy);
     if (config.sensor) drawSensor();
+    
+    // Update other UI elements
+    
+    if (ui.dragLabel != null) {
+        var Fx = barrierFx;
+        var Fy = barrierFy;
+        ui.dragLabel.innerHTML = Math.sqrt(Fx*Fx + Fy*Fy).toFixed(3);
+    }
 }
 
 // Color a grid square in the image data array, one pixel at a time (rgb each in range 0 to 255):
@@ -682,16 +708,6 @@ function removeBarrier(x, y) {
     }
 }
 
-// Clear all barriers:
-function clearBarriers() {
-    for (var x=0; x<xdim; x++) {
-        for (var y=0; y<ydim; y++) {
-            barrier[x+y*xdim] = false;
-        }
-    }
-    paintCanvas();
-}
-
 // Resize the grid:
 function resize() {
     // First up-sample the macroscopic variables into temporary arrays at max resolution:
@@ -798,11 +814,6 @@ function resetTimer() {
     startTime = (new Date()).getTime();
 }
 
-// Show value of flow speed setting:
-function adjustSpeed() {
-    speedValue.innerHTML = Number(config.speed).toFixed(3);
-}
-
 // Show value of viscosity:
 function adjustViscosity() {
     viscValue.innerHTML = Number(config.viscosity).toFixed(3);
@@ -859,24 +870,10 @@ function showPeriod() {
     }
 }
 
-// Write all the barrier locations to the data area:
-function showBarrierLocations() {
-    dataArea.innerHTML = '{name:"Barrier locations",\n';
-    dataArea.innerHTML += 'locations:[\n';
-    for (var y=1; y<ydim-1; y++) {
-        for (var x=1; x<xdim-1; x++) {
-            if (barrier[x+y*xdim]) dataArea.innerHTML += x + ',' + y + ',\n';
-        }
-    }
-    dataArea.innerHTML = dataArea.innerHTML.substr(0, dataArea.innerHTML.length-2); // remove final comma
-    dataArea.innerHTML += '\n]},\n';
-}
-
-// Place a preset barrier:
-function placePresetBarrier() {
-    var index = barrierSelect.selectedIndex;
-    if (index == 0) return;
+// Replaces current barriers with a preset barrier. 0 for none.
+function placePresetBarrier(index) {    
     clearBarriers();
+    if (index == 0) return;    
     var bCount = barrierList[index-1].locations.length/2;	// number of barrier sites
     // To decide where to place it, find minimum x and min/max y:
     var xMin = barrierList[index-1].locations[0];
@@ -900,8 +897,30 @@ function placePresetBarrier() {
         var y = barrierList[index-1].locations[siteIndex+1] - yAverage + Math.round(ydim/2);
         addBarrier(x, y);
     }
-    paintCanvas();
-    barrierSelect.selectedIndex = 0;	// A choice on this menu is a one-time action, not an ongoing setting
+}
+
+// Clear all barriers:
+function clearBarriers() {
+    for (var x=0; x<xdim; x++) {
+        for (var y=0; y<ydim; y++) {
+            barrier[x+y*xdim] = false;
+        }
+    }
+}
+
+
+
+// Write all the barrier locations to the data area:
+function showBarrierLocations() {
+    dataArea.innerHTML = '{name:"Barrier locations",\n';
+    dataArea.innerHTML += 'locations:[\n';
+    for (var y=1; y<ydim-1; y++) {
+        for (var x=1; x<xdim-1; x++) {
+            if (barrier[x+y*xdim]) dataArea.innerHTML += x + ',' + y + ',\n';
+        }
+    }
+    dataArea.innerHTML = dataArea.innerHTML.substr(0, dataArea.innerHTML.length-2); // remove final comma
+    dataArea.innerHTML += '\n]},\n';
 }
 
 // Print debugging data:
