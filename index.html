@@ -1,106 +1,226 @@
-<!DOCTYPE html>
-<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+﻿<!DOCTYPE html>
+<html>
 
-<script src="plotly-latest.min.js"></script>
+    <head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 
-<title>Experiment 1 - Drag coefficents</title>
-<meta charset="utf-8">
-<meta name="viewport" content="width=620">
-<style>
-	body {background-color:#ffffff; font-family:Arial, sans-serif; font-size:14px;
-					text-align:center;}						/* gray background, center everything */
-	p {margin-left:auto; margin-right:auto; width:600px;}	/* keep paragraphs narrow and centered */
-	input {font-size:115%;}									/* make buttons bigger */	
-	li {text-align:left;}
-</style>
-<style type="text/css"></style></head>
-
-<body>
-
-<h2>Experiment-1: Drag</h2>
-
-<p>By Matthew Aitchison</p> 
-
-<canvas id="theCanvas" width="600" height="240">This application runs only in modern
-browsers. For best results, use Google Chrome.</canvas>
-
-<div>
-	<input id="resetFluidButton" type="button" onclick="initFluid()" value="Reset">	    
-	<input id="startButton" type="button" onclick="startStop()" value="Start">
-    <input id="plotButton" type="button" onclick="plotPoint()" value="Plot">
-</div>
-<div>
+    <script src="plotly-latest.min.js"></script>
     
-    <input id="speedSlider" 
-        type="range" min="0" max="0.50" step="0.02" value="0.10" onchange="_adjustSpeed()"
-        style="width: 300px"
-    >
-    Fluid speed: <span id="speedValue">0.100</span>     
-</div>
-<div>
-Force (drag): <span id="dragLabel">...</span> 
-FPS: <span id="fpsLabel">...</span> 
-</div>
-<p style="text-align:left">
-In this experiment we will test the effects of drag on an object under various conditions.
-
-
-<div id="tester" style="width:600px;height:250px;"></div>
-
-<script src="./Fluid Dynamics Simulation_files/barrierdata.js"></script>
-<script src="lattice_boltzmann.js"></script>   
-
-<!-- Just an interface to the lattice_boltzmann settings -->
-<script>
-
-    // globals to our UI controls
-    var speedLabel = document.getElementById('speedValue');
-    var speedSlider = document.getElementById('speedSlider');	
-    
-    ui.dragLabel = document.getElementById('dragLabel');	
-    ui.fpsLabel = document.getElementById('fpsLabel');	
-    
-    _adjustSpeed()
-    
-    var results = []
-
-    // Plot current drag on graph
-    function plotPoint() {
-        var Fx = barrierFx;
-        var Fy = barrierFy;
-        drag_force =  Math.sqrt(Fx*Fx + Fy*Fy).toFixed(3);
-        fluid_speed = speedSlider.value
-        
-        results[fluid_speed] = drag_force
-        drawPlot()
-    }
-    
-    function drawPlot() {
-        TESTER = document.getElementById('tester');
-        
-        console.log(results)
-        
-        var _x = []
-        var _y = []
-
-        for (var index in results) {            
-            _x.push(index)
-            _y.push(results[index])            
+    <link href="./UI/jquery-ui.css" rel="stylesheet">
+	<style>
+        body{
+            font: 62.5% "Trebuchet MS", sans-serif;
+            margin: 50px;
         }
-            
-        Plotly.plot( TESTER, [{
-        x: _x,
-        y: _y, }], {        
-        margin: { t: 0 } } );
-    }
+        .demoHeaders {
+            margin-top: 2em;
+        }
+        #dialog-link {
+            padding: .4em 1em .4em 20px;
+            text-decoration: none;
+            position: relative;
+        }
+        #dialog-link span.ui-icon {
+            margin: 0 5px 0 0;
+            position: absolute;
+            left: .2em;
+            top: 50%;
+            margin-top: -8px;
+        }
+        #icons {
+            margin: 0;
+            padding: 0;
+        }
+        #icons li {
+            margin: 2px;
+            position: relative;
+            padding: 4px 0;
+            cursor: pointer;
+            float: left;
+            list-style: none;
+        }
+        #icons span.ui-icon {
+            float: left;
+            margin: 0 4px;
+        }
+        
+        #radioset label { width: 200px }
+        
+        .fakewindowcontain .ui-widget-overlay {
+            position: absolute;
+        }
+        select {
+            width: 200px;
+        }
+	</style>
+
+    <title>Experiment 1 - Drag coefficents</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=620">
+    <style>
+        body {background-color:#ffffff; font-family:Arial, sans-serif; font-size:14px;
+                        text-align:center;}						/* gray background, center everything */
+        p {margin-left:auto; margin-right:auto; width:600px;}	/* keep paragraphs narrow and centered */
+        input {font-size:115%;}									/* make buttons bigger */	
+        li {text-align:left;}
+    </style>
+    <style type="text/css"></style></head>
+
+    <body>
+
+    <h2>Experiment-1: Drag</h2>
+
+    <p>By Matthew Aitchison</p> 
+
+    <canvas id="theCanvas" width="600" height="240">This application runs only in modern
+    browsers. For best results, use Google Chrome.</canvas>
+
+    <!-- Reset / Play -->        
+    <div>
+        <input id="resetFluidButton" type="button" onclick="initFluid()" value="Reset">	    
+        <input id="startButton" type="button" onclick="startStop()" value="Start">        
+    </div>
     
-    // Show value of flow speed setting:
-    function _adjustSpeed() {
-        config.speed = Number(speedSlider.value)
-        speedLabel.innerHTML = Number(config.speed).toFixed(3);        
-    }
-                 
+    <!-- Visualization -->        
+    <form id="myform" style="margin-top: 1em;">
+        <div id="radioset">
+            <input type="radio" id="radio1" value="0" name="radio"><label for="radio1">Density</label><br>
+            <input type="radio" id="radio2" value="1" name="radio"><label for="radio2">XVel</label><br>
+            <input type="radio" id="radio3" value="2" name="radio"><label for="radio3">YVel</label><br>
+            <input type="radio" id="radio4" value="3" name="radio"><label for="radio4">Speed</label><br>
+            <input type="radio" id="radio5" value="4" name="radio" checked="checked"><label for="radio5">Curl</label><br>
+        </div>
+    </form>
+    
+    <br>
+    
+    <!-- Fluid Speed Slider -->
+    <div id="speedSlider"></div>
+    
+    <br>
+    
+    <!-- Plotting -->        
+    <div>
+        <input id="plotButton" type="button" onclick="plotPoint()" value="Plot">
+    </div>
 
-</script>
+    <p>Enable a DOM element (or group of elements) to be selectable. Draw a box with your cursor to select items. Hold down the Ctrl key to make multiple non-adjacent selections. </p>
 
-</body></html>
+    
+    <div>
+        
+        <input id="_speedSlider" 
+            type="range" min="0" max="0.50" step="0.02" value="0.10" onchange="_adjustSpeed()"
+            style="width: 300px"
+        >
+        Fluid speed: <span id="speedValue">0.100</span>     
+    </div>
+    <div>
+    Force (drag): <span id="dragLabel">...</span> 
+    FPS: <span id="fpsLabel">...</span> 
+    </div>
+    <p style="text-align:left">
+    In this experiment we will test the effects of drag on an object under various conditions.
+
+
+    <div id="tester" style="width:600px;height:250px;"></div>
+
+    <script src="./Fluid Dynamics Simulation_files/barrierdata.js"></script>
+    <script src="lattice_boltzmann.js"></script>   
+
+    <script src="ui/external/jquery/jquery.js"></script>
+    <script src="ui/jquery-ui.js"></script>
+    
+    <!-- Just an interface to the lattice_boltzmann settings -->
+    <script>
+
+        // initialization
+        
+        // start the simulation on page load
+        startStop()
+        
+        // get jquery up and running
+        $( "#radioset" ).buttonset();
+        
+        $( "#resetFluidButton" ).button();
+        $( "#startButton" ).button();
+        
+        $( "#plotButton" ).button();                              
+        
+        $( "#speedSlider" ).slider({
+            orientation: "horizontal",
+            range: "min",
+            min: 0.00,
+            max: 0.30,
+            step: 0.025,
+            value: 0.10,
+            slide: _adjustSpeed,
+            change: _adjustSpeed
+        });
+        
+        // hooks
+        
+        $( "#radioset" ).click(function() {
+            _setPlot()
+        });
+
+
+        // globals to our UI controls
+        var speedLabel = document.getElementById('speedValue');
+        var speedSlider = document.getElementById('speedSlider');	
+        var plotButtons = document.getElementById('radioset');	
+        
+        ui.dragLabel = document.getElementById('dragLabel');	
+        ui.fpsLabel = document.getElementById('fpsLabel');	
+        
+        _adjustSpeed()
+        
+        var results = []
+
+        // Plot current drag on graph
+        function plotPoint() {
+            var Fx = barrierFx;
+            var Fy = barrierFy;
+            drag_force =  Math.sqrt(Fx*Fx + Fy*Fy).toFixed(3);
+            fluid_speed = speedSlider.value
+            
+            results[fluid_speed] = drag_force
+            drawPlot()
+        }
+        
+        function drawPlot() {
+            TESTER = document.getElementById('tester');
+            
+            console.log(results)
+            
+            var _x = []
+            var _y = []
+
+            for (var index in results) {            
+                _x.push(index)
+                _y.push(results[index])            
+            }
+                
+            Plotly.plot( TESTER, [{
+            x: _x,
+            y: _y, }], {        
+            margin: { t: 0 } } );
+        }
+        
+        // Show value of flow speed setting:
+        function _adjustSpeed() {            
+            value = $('#speedSlider').slider("value");
+            console.log(value)
+            config.speed = value
+            speedLabel.innerHTML = Number(value).toFixed(3);        
+        }
+        
+        function _setPlot() {
+            value = $('input[name=radio]:checked', '#myform').val();
+            config.plotSelect = value;
+        }
+                     
+
+    </script>
+
+    </body>
+ </html>

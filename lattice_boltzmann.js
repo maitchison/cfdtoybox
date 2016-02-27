@@ -1,5 +1,11 @@
 "use strict";
 
+var PlotType = {
+    DENSITY: 0,
+    SPEED: 3,
+    CURL: 4
+};                
+
 // Config variables:
 var config  = {
     // steps per draw (affects presentation speed of simulation)
@@ -94,7 +100,7 @@ var rho = new Array(xdim*ydim);			// macroscopic density
 var ux = new Array(xdim*ydim);			// macroscopic velocity
 var uy = new Array(xdim*ydim);
 var curl = new Array(xdim*ydim);
-var barrier = new Array(xdim*ydim);		// boolean array of barrier locations
+var barrier = new Array(xdim * ydim);		// boolean array of barrier locations
 
 // Initialize barriers
 placePresetBarrier(config.barrierTemplate)
