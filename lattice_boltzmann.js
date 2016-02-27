@@ -8,11 +8,16 @@ var PlotType = {
 
 // Config variables:
 var config  = {
+    
     // steps per draw (affects presentation speed of simulation)
-    steps: 20,
-    // speed fluid travels at
+    steps: 10,
+    
+    // speed fluid travels at   
     speed: 0.1,
-    viscosity: 0.040,       
+    
+    // the viscosity of the fluid
+    viscosity: 0.020,       
+    
     contrast: 1.0,
     pxPerSquare:4,
     plotSelect:4,
@@ -913,8 +918,6 @@ function clearBarriers() {
         }
     }
 }
-
-
 
 // Write all the barrier locations to the data area:
 function showBarrierLocations() {

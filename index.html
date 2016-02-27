@@ -45,6 +45,8 @@
         
         #radioset label { width: 200px }
         
+        #speedSlider { width: 300px }
+        
         .fakewindowcontain .ui-widget-overlay {
             position: absolute;
         }
@@ -94,26 +96,20 @@
     <br>
     
     <!-- Fluid Speed Slider -->
+    Fluid speed: <span id="speedValue">0.100</span>     
     <div id="speedSlider"></div>
-    
+    <div>       
+        
+    </div>    
     <br>
     
     <!-- Plotting -->        
     <div>
-        <input id="plotButton" type="button" onclick="plotPoint()" value="Plot">
-    </div>
-
-    <p>Enable a DOM element (or group of elements) to be selectable. Draw a box with your cursor to select items. Hold down the Ctrl key to make multiple non-adjacent selections. </p>
-
+        <input id="plotButton" type="button" onclick="autoPlot_laminar()" value="Run Laminar Experiment">
+        <input id="plotButton2" type="button" onclick="autoPlot_nonlaminar()" value="Run Non Laminar Experiment">
+    </div>   
     
-    <div>
-        
-        <input id="_speedSlider" 
-            type="range" min="0" max="0.50" step="0.02" value="0.10" onchange="_adjustSpeed()"
-            style="width: 300px"
-        >
-        Fluid speed: <span id="speedValue">0.100</span>     
-    </div>
+    
     <div>
     Force (drag): <span id="dragLabel">...</span> 
     FPS: <span id="fpsLabel">...</span> 
@@ -127,12 +123,32 @@
     <script src="./Fluid Dynamics Simulation_files/barrierdata.js"></script>
     <script src="lattice_boltzmann.js"></script>   
 
-    <script src="ui/external/jquery/jquery.js"></script>
-    <script src="ui/jquery-ui.js"></script>
+    <script src="./UI/external/jquery/jquery.js"></script>
+    <script src="./UI/jquery-ui.js"></script>
     
     <!-- Just an interface to the lattice_boltzmann settings -->
     <script>
 
+        // Find best approximation for data using linear regression. 
+        // Uses a nieve iterative algorithm and assumes bias is zero.
+        function linearRegress(data) {
+            theta = 0.0;
+            n = results.length;
+            for (var i = 0; i < 99; i++) {
+                loss = 0.0;
+                grad = 0.0;
+            
+                for (var index in results) {            
+                    loss += (0.5 * Math.pow(results[index] - index * theta,2)) / n;
+                    grad += (results[index] - index * theta) / n;
+                }
+                console.log(theta+":loss="+loss);
+                theta += grad * 0.1;
+            }
+            return theta;            
+        }
+        
+    
         // initialization
         
         // start the simulation on page load
@@ -145,13 +161,15 @@
         $( "#startButton" ).button();
         
         $( "#plotButton" ).button();                              
+        $( "#plotButton2" ).button();                              
+
         
         $( "#speedSlider" ).slider({
             orientation: "horizontal",
             range: "min",
             min: 0.00,
-            max: 0.30,
-            step: 0.025,
+            max: 0.18,
+            step: 0.0125,
             value: 0.10,
             slide: _adjustSpeed,
             change: _adjustSpeed
@@ -175,16 +193,64 @@
         _adjustSpeed()
         
         var results = []
-
-        // Plot current drag on graph
-        function plotPoint() {
+        var sample_number
+        var sample_count 
+        var sample_step 
+        var sample_start
+        var sample_time = 1000
+        
+        function currentDragForceMagnitude() {
             var Fx = barrierFx;
             var Fy = barrierFy;
-            drag_force =  Math.sqrt(Fx*Fx + Fy*Fy).toFixed(3);
-            fluid_speed = speedSlider.value
+            return Math.sqrt(Fx*Fx + Fy*Fy).toFixed(3);            
+        }
+        
+        // Takes the next sample for the plot
+        function nextSample() {
+            console.log("Sample."+sample_number)            
             
-            results[fluid_speed] = drag_force
-            drawPlot()
+            // Take sample from previous step.
+            results[config.speed] = currentDragForceMagnitude()
+            
+            sample_number = sample_number + 1
+
+            // Set the next fluid speed
+            config.speed = sample_start + sample_number * sample_step
+            
+            // Cue up a new step
+            if (sample_number < sample_count) {
+                window.setTimeout(nextSample,sample_time)
+            } else {
+                // otherwise plot the results
+                drawPlot()
+            }
+        }
+        
+        function start_experiment(start,step,count) {
+            console.log("Beginning Auto Plot")
+            
+            sample_number = 0
+            sample_time = 1000
+            sample_count = count
+            sample_start = start
+            sample_step = step 
+            
+            config.speed = sample_start
+            
+            initFluid()
+                   
+            setTimeout(nextSample,sample_time);
+        }
+
+        // Plot current drag on graph
+        function autoPlot_laminar() {
+            start_experiment(0.0,0.005,10)           
+        }
+        
+        // Plot current drag on graph
+        function autoPlot_nonlaminar() {
+            start_experiment(0.1,0.010,10)
+            
         }
         
         function drawPlot() {
@@ -204,6 +270,17 @@
             x: _x,
             y: _y, }], {        
             margin: { t: 0 } } );
+            
+            // stats analysis
+            theta = linearRegress(results);
+            console.log("Theta = "+theta)
+            max_x = _x[_x.length-1]
+            max_y = _y[_y.length-1]
+            Plotly.plot( TESTER, [{
+            x: [0,max_x],
+            y: [0,theta*max_x], }], {        
+            margin: { t: 0 } } );
+            
         }
         
         // Show value of flow speed setting:
