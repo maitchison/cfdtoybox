@@ -5,9 +5,23 @@
     
     Make sure to include 
         helper.js
-        LBEDefaultSolver    
+        LBEDefaultSolver
+    
 
 */
+
+// This just gives me a basic string.format 
+if (!String.prototype.format) {
+  String.prototype.format = function() {
+    var args = arguments;
+    return this.replace(/{(\d+)}/g, function(match, number) { 
+      return typeof args[number] != 'undefined'
+        ? args[number]
+        : match
+      ;
+    });
+  };
+}
 
 var PlotType = {
     DENSITY: 0,
@@ -86,9 +100,6 @@ var showingPeriod = false;
 var lastBarrierFy = 1;						// for determining when F_y oscillation begins
 var lastFyOscTime = 0;						// for calculating F_y oscillation period
 
-// start with a solver
-var solver = new LBESolver_JS(xdim, ydim);
-
 canvas.addEventListener('mousedown', mouseDown, false);
 canvas.addEventListener('mousemove', mouseMove, false);
 document.body.addEventListener('mouseup', mouseUp, false);	// button release could occur outside canvas
@@ -96,6 +107,23 @@ canvas.addEventListener('touchstart', mouseDown, false);
 canvas.addEventListener('touchmove', mouseMove, false);
 document.body.addEventListener('touchend', mouseUp, false);
 
+// Create the arrays of fluid particle densities, etc. (using 1D arrays for speed):
+// To index into these arrays, use x + y*xdim, traversing rows first and then columns.
+var n0 = createArray(xdim*ydim);			// microscopic densities along each lattice direction
+var nN = createArray(xdim*ydim);
+var nS = createArray(xdim*ydim);
+var nE = createArray(xdim*ydim);
+var nW = createArray(xdim*ydim);
+var nNE = createArray(xdim*ydim);
+var nSE = createArray(xdim*ydim);
+var nNW = createArray(xdim*ydim);
+var nSW = createArray(xdim*ydim);
+var rho = createArray(xdim*ydim);			// macroscopic density
+var ux = createArray(xdim*ydim);			// macroscopic velocity
+var uy = createArray(xdim*ydim);
+var curl = createArray(xdim*ydim);
+
+var barrier = new Array(xdim * ydim);		// boolean array of barrier locations
 
 // Initialize barriers
 placePresetBarrier(config.barrierTemplate)
@@ -201,8 +229,8 @@ function processInput()
 function runSimulationSteps(steps)
 {
     for (var step=0; step<steps; step++) {
-        solver.collide();
-        solver.stream();
+        collide();
+        stream();
         if (config.tracers) moveTracers();
         if (pushing) push(pushX, pushY, pushUX, pushUY);
         time++;
@@ -220,62 +248,6 @@ function runSimulationSteps(steps)
     
 }
 
-// Paint the canvas:
-function paintCanvas() {
-    var cIndex = 0;
-    var contrast = Math.pow(1.2, Number(config.contrast));
-    var plotType = config.plotSelect;
-    
-    if (plotType == 4) solver.computeCurl();
-
-    var rho = solver.rho;
-    var ux = solver.ux;
-    var uy = solver.uy;
-    var curl = solver.curl;
-    var barrier = solver.barrier;
-
-    for (var y = 0; y < ydim; y++) {
-        for (var x = 0; x < xdim; x++) {
-            if (barrier[x + y * xdim]) {
-                cIndex = nColors + 1;	// kludge for barrier color which isn't really part of color map
-            } else {
-                if (plotType == 0) {
-                    cIndex = Math.round(nColors * ((rho[x + y * xdim] - 1) * 6 * contrast + 0.5));
-                } else if (plotType == 1) {
-                    cIndex = Math.round(nColors * (ux[x + y * xdim] * 2 * contrast + 0.5));
-                } else if (plotType == 2) {
-                    cIndex = Math.round(nColors * (uy[x + y * xdim] * 2 * contrast + 0.5));
-                } else if (plotType == 3) {
-                    var speed = Math.sqrt(ux[x + y * xdim] * ux[x + y * xdim] + uy[x + y * xdim] * uy[x + y * xdim]);
-                    cIndex = Math.round(nColors * (speed * 4 * contrast));
-                } else {
-                    cIndex = Math.round(nColors * (curl[x + y * xdim] * 5 * contrast + 0.5));
-                }
-                if (cIndex < 0) cIndex = 0;
-                if (cIndex > nColors) cIndex = nColors;
-            }
-
-            colorSquare(x, y, redList[cIndex], greenList[cIndex], blueList[cIndex]);
-
-        }
-    }
-    context.putImageData(image, 0, 0);
-
-    // Draw tracers, force vector, and/or sensor if appropriate:        
-    if (config.tracers) drawTracers();
-    if (config.flowline) drawFlowlines();
-    if (config.showForce) drawForceArrow(barrierxSum / barrierCount, barrierySum / barrierCount, barrierFx, barrierFy);
-    if (config.sensor) drawSensor();
-
-    // Update other UI elements
-    if (ui.dragLabel != null) {
-        var Fx = barrierFx;
-        var Fy = barrierFy;
-        ui.dragLabel.innerHTML = Math.sqrt(Fx * Fx + Fy * Fy).toFixed(3);
-    }
-}
-
-
 // Simulate function executes a bunch of steps and then schedules another call to itself:
 function simulate() 
 {
@@ -290,21 +262,25 @@ function simulate()
             
     var stepsPerFrame = Number(config.steps);			// number of simulation steps per animation frame
     
-    // Boundaries and input.    
+    // Boundaries and input.
+    
     setBoundaries();    
     processInput()
     
-    // Run simulation    
+    // Run simulation
+    
     var simulationStartTime = new Date().getTime();    
     runSimulationSteps(stepsPerFrame)    
     var simulationEndTime = new Date().getTime()
     
-    // Draw the canvas    
+    // Draw the canvas
+    
     var drawStartTime = new Date().getTime();
     paintCanvas();
     var drawEndTime = new Date().getTime()
     
-    // Update the fps label.    
+    // Update the fps label.
+    
     var currentTime = new Date().getTime();
     var totalEndTime = currentTime;
     
@@ -332,11 +308,15 @@ function simulate()
         }
     }
     
-    var stable = solver.isStable()
+    var stable = true;
+    for (var x=0; x<xdim; x++) {
+        var index = x + (ydim/2)*xdim;	// look at middle row only
+        if (rho[index] <= 0) stable = false;
+    }
     if (!stable) {
         window.alert("The simulation has become unstable due to excessive fluid speeds.");
-        this.startStop();
-        this.initFluid();
+        startStop();
+        initFluid();
     }    
     lastUpdate = new Date().getTime()
 }
@@ -346,15 +326,118 @@ function setBoundaries()
 {
     var u0 = Number(config.speed);
     for (var x=0; x<xdim; x++) {
-        solver.setEquilibrium(x, 0, u0, 0, 1);
-        solver.setEquilibrium(x, ydim - 1, u0, 0, 1);
+        setEquil(x, 0, u0, 0, 1);
+        setEquil(x, ydim-1, u0, 0, 1);
     }
     for (var y=1; y<ydim-1; y++) {
-        solver.setEquilibrium(0, y, u0, 0, 1);
-        solver.setEquilibrium(xdim - 1, y, u0, 0, 1);
+        setEquil(0, y, u0, 0, 1);
+        setEquil(xdim-1, y, u0, 0, 1);
     }
 }
 
+// Collide particles within each cell (here's the physics!):
+function collide() {
+    var viscosity = Number(config.viscosity);	// kinematic viscosity coefficient in natural units
+    var omega = 1 / (3*viscosity + 0.5);		// reciprocal of relaxation time    
+    for (var y=1; y<ydim-1; y++) {
+        for (var x=1; x<xdim-1; x++) {
+
+            var i = x + y*xdim;		// array index for this lattice site
+            
+            var _n0 = n0[i]
+            var _nN = nN[i]
+            var _nS = nS[i]
+            var _nE = nE[i] 
+            var _nW = nW[i]
+            var _nNW = nNW[i]
+            var _nNE = nNE[i]
+            var _nSW = nSW[i]
+            var _nSE = nSE[i]                                    
+            
+            var thisrho = _n0 + _nN + _nS + _nE + _nW + _nNW + _nNE + _nSW + _nSE;
+            var thisux = (_nE + _nNE + _nSE - _nW - _nNW - _nSW) / thisrho;
+            var thisuy = (_nN + _nNE + _nNW - _nS - _nSE - _nSW) / thisrho;
+            var one9thrho = one9th * thisrho;		// pre-compute a bunch of stuff for optimization
+            var one36thrho = one36th * thisrho;
+            var ux3 = 3.0 * thisux;
+            var uy3 = 3.0 * thisuy;
+            var ux2 = thisux * thisux;
+            var uy2 = thisuy * thisuy;
+            var uxuy2 = 2.0 * thisux * thisuy;
+            var u2 = ux2 + uy2;
+            var u215 = 1.5 * u2;
+            n0[i]  = _n0 + omega * (four9ths*thisrho * (1.0                          - u215) - n0[i]);
+            nE[i]  = _nE + omega * (   one9thrho * (1.0 + ux3       + 4.5*ux2        - u215) - nE[i]);
+            nW[i]  = _nW + omega * (   one9thrho * (1.0 - ux3       + 4.5*ux2        - u215) - nW[i]);
+            nN[i]  = _nN + omega * (   one9thrho * (1.0 + uy3       + 4.5*uy2        - u215) - nN[i]);
+            nS[i]  = _nS + omega * (   one9thrho * (1.0 - uy3       + 4.5*uy2        - u215) - nS[i]);
+            nNE[i] = _nNE+ omega * (  one36thrho * (1.0 + ux3 + uy3 + 4.5*(u2+uxuy2) - u215) - nNE[i]);
+            nSE[i] = _nSE+ omega * (  one36thrho * (1.0 + ux3 - uy3 + 4.5*(u2-uxuy2) - u215) - nSE[i]);
+            nNW[i] = _nNW+ omega * (  one36thrho * (1.0 - ux3 + uy3 + 4.5*(u2-uxuy2) - u215) - nNW[i]);
+            nSW[i] = _nSW+ omega * (  one36thrho * (1.0 - ux3 - uy3 + 4.5*(u2+uxuy2) - u215) - nSW[i]);            
+            rho[i] = thisrho;
+            ux[i] = thisux;
+            uy[i] = thisuy            
+        }
+    }
+    
+    for (var y=1; y<ydim-2; y++) {
+        nW[xdim-1+y*xdim] = nW[xdim-2+y*xdim];		// at right end, copy left-flowing densities from next row to the left
+        nNW[xdim-1+y*xdim] = nNW[xdim-2+y*xdim];
+        nSW[xdim-1+y*xdim] = nSW[xdim-2+y*xdim];
+    } 
+}
+
+// Move particles along their directions of motion:
+function stream() {
+    barrierCount = 0; barrierxSum = 0; barrierySum = 0;
+    barrierFx = 0.0; barrierFy = 0.0;
+    for (var y=ydim-2; y>0; y--) {			// first start in NW corner...
+        for (var x=1; x<xdim-1; x++) {
+            nN[x+y*xdim] = nN[x+(y-1)*xdim];			// move the north-moving particles
+            nNW[x+y*xdim] = nNW[x+1+(y-1)*xdim];		// and the northwest-moving particles
+        }
+    }
+    for (var y=ydim-2; y>0; y--) {			// now start in NE corner...
+        for (var x=xdim-2; x>0; x--) {
+            nE[x+y*xdim] = nE[x-1+y*xdim];			// move the east-moving particles
+            nNE[x+y*xdim] = nNE[x-1+(y-1)*xdim];		// and the northeast-moving particles
+        }
+    }
+    for (var y=1; y<ydim-1; y++) {			// now start in SE corner...
+        for (var x=xdim-2; x>0; x--) {
+            nS[x+y*xdim] = nS[x+(y+1)*xdim];			// move the south-moving particles
+            nSE[x+y*xdim] = nSE[x-1+(y+1)*xdim];		// and the southeast-moving particles
+        }
+    }
+    for (var y=1; y<ydim-1; y++) {				// now start in the SW corner...
+        for (var x=1; x<xdim-1; x++) {
+            nW[x+y*xdim] = nW[x+1+y*xdim];			// move the west-moving particles
+            nSW[x+y*xdim] = nSW[x+1+(y+1)*xdim];		// and the southwest-moving particles
+        }
+    }
+    for (var y=1; y<ydim-1; y++) {				// Now handle bounce-back from barriers
+        for (var x=1; x<xdim-1; x++) {
+            if (barrier[x+y*xdim]) {
+                var index = x + y*xdim;
+                nE[x+1+y*xdim] = nW[index];
+                nW[x-1+y*xdim] = nE[index];
+                nN[x+(y+1)*xdim] = nS[index];
+                nS[x+(y-1)*xdim] = nN[index];
+                nNE[x+1+(y+1)*xdim] = nSW[index];
+                nNW[x-1+(y+1)*xdim] = nSE[index];
+                nSE[x+1+(y-1)*xdim] = nNW[index];
+                nSW[x-1+(y-1)*xdim] = nNE[index];
+                // Keep track of stuff needed to plot force vector:
+                barrierCount++;
+                barrierxSum += x;
+                barrierySum += y;
+                barrierFx += nE[index] + nNE[index] + nSE[index] - nW[index] - nNW[index] - nSW[index];
+                barrierFy += nN[index] + nNE[index] + nNW[index] - nS[index] - nSE[index] - nSW[index];
+            }
+        }
+    }
+}
 
 // Move the tracer particles:
 function moveTracers() {
@@ -389,6 +472,34 @@ function push(pushX, pushY, pushUX, pushUY) {
     }
 }
 
+// Set all densities in a cell to their equilibrium values for a given velocity and density:
+// (If density is omitted, it's left unchanged.)
+function setEquil(x, y, newux, newuy, newrho) {
+    var i = x + y*xdim;
+    if (typeof newrho == 'undefined') {
+        newrho = rho[i];
+    }
+    var ux3 = 3 * newux;
+    var uy3 = 3 * newuy;
+    var ux2 = newux * newux;
+    var uy2 = newuy * newuy;
+    var uxuy2 = 2 * newux * newuy;
+    var u2 = ux2 + uy2;
+    var u215 = 1.5 * u2;
+    n0[i]  = four9ths * newrho * (1                              - u215);
+    nE[i]  =   one9th * newrho * (1 + ux3       + 4.5*ux2        - u215);
+    nW[i]  =   one9th * newrho * (1 - ux3       + 4.5*ux2        - u215);
+    nN[i]  =   one9th * newrho * (1 + uy3       + 4.5*uy2        - u215);
+    nS[i]  =   one9th * newrho * (1 - uy3       + 4.5*uy2        - u215);
+    nNE[i] =  one36th * newrho * (1 + ux3 + uy3 + 4.5*(u2+uxuy2) - u215);
+    nSE[i] =  one36th * newrho * (1 + ux3 - uy3 + 4.5*(u2-uxuy2) - u215);
+    nNW[i] =  one36th * newrho * (1 - ux3 + uy3 + 4.5*(u2-uxuy2) - u215);
+    nSW[i] =  one36th * newrho * (1 - ux3 - uy3 + 4.5*(u2+uxuy2) - u215);
+    rho[i] = newrho;
+    ux[i] = newux;
+    uy[i] = newuy;
+}
+
 // Initialize the tracer particles:
 function initTracers() {
     if (tracerCheck.checked) {
@@ -410,6 +521,55 @@ function initTracers() {
     paintCanvas();
 }
 
+// Paint the canvas:
+function paintCanvas() {
+    var cIndex=0;
+    var contrast = Math.pow(1.2,Number(config.contrast));
+    var plotType = config.plotSelect;
+    //var pixelGraphics = pixelCheck.checked;
+    if (plotType == 4) computeCurl();
+    for (var y=0; y<ydim; y++) {
+        for (var x=0; x<xdim; x++) {
+            if (barrier[x+y*xdim]) {
+                cIndex = nColors + 1;	// kludge for barrier color which isn't really part of color map
+            } else {
+                if (plotType == 0) {
+                    cIndex = Math.round(nColors * ((rho[x+y*xdim]-1)*6*contrast + 0.5));
+                } else if (plotType == 1) {
+                    cIndex = Math.round(nColors * (ux[x+y*xdim]*2*contrast + 0.5));
+                } else if (plotType == 2) {
+                    cIndex = Math.round(nColors * (uy[x+y*xdim]*2*contrast + 0.5));
+                } else if (plotType == 3) {
+                    var speed = Math.sqrt(ux[x+y*xdim]*ux[x+y*xdim] + uy[x+y*xdim]*uy[x+y*xdim]);
+                    cIndex = Math.round(nColors * (speed*4*contrast));
+                } else {
+                    cIndex = Math.round(nColors * (curl[x+y*xdim]*5*contrast + 0.5));
+                }
+                if (cIndex < 0) cIndex = 0;
+                if (cIndex > nColors) cIndex = nColors;
+            }
+            
+            colorSquare(x, y, redList[cIndex], greenList[cIndex], blueList[cIndex]);
+            
+        }
+    }
+    //if (pixelGraphics) 
+    context.putImageData(image, 0, 0);		// blast image to the screen
+    // Draw tracers, force vector, and/or sensor if appropriate:        
+    if (config.tracers) drawTracers();
+    if (config.flowline) drawFlowlines();
+    if (config.showForce) drawForceArrow(barrierxSum/barrierCount, barrierySum/barrierCount, barrierFx, barrierFy);
+    if (config.sensor) drawSensor();
+    
+    // Update other UI elements
+    
+    if (ui.dragLabel != null) {
+        var Fx = barrierFx;
+        var Fy = barrierFy;
+        ui.dragLabel.innerHTML = Math.sqrt(Fx*Fx + Fy*Fy).toFixed(3);
+    }
+}
+
 // Color a grid square in the image data array, one pixel at a time (rgb each in range 0 to 255):
 function colorSquare(x, y, r, g, b) {
     var flippedy = ydim - y - 1;			// put y=0 at the bottom
@@ -422,6 +582,15 @@ function colorSquare(x, y, r, g, b) {
             data[index+0] = r;
             data[index+1] = g;
             data[index+2] = b;
+        }
+    }
+}
+
+// Compute the curl (actually times 2) of the macroscopic velocity field, for plotting:
+function computeCurl() {
+    for (var y=1; y<ydim-1; y++) {			// interior sites only; leave edges set to zero
+        for (var x=1; x<xdim-1; x++) {
+            curl[x+y*xdim] = uy[x+1+y*xdim] - uy[x-1+y*xdim] - ux[x+(y+1)*xdim] + ux[x+(y-1)*xdim];
         }
     }
 }
@@ -602,30 +771,117 @@ function canvasToGrid(canvasX, canvasY) {
 // Add a barrier at a given grid coordinate location:
 function addBarrier(x, y) {
     if ((x > 1) && (x < xdim-2) && (y > 1) && (y < ydim-2)) {
-        solver.barrier[x+y*xdim] = true;
+        barrier[x+y*xdim] = true;
     }
 }
 
 // Remove a barrier at a given grid coordinate location:
 function removeBarrier(x, y) {
-    if (solver.barrier[x + y * xdim]) {
-        solver.barrier[x + y * xdim] = false;
+    if (barrier[x+y*xdim]) {
+        barrier[x+y*xdim] = false;
         paintCanvas();
     }
 }
 
+// Creates a new array of given size using the fastest format
+// This used tobe Float32Array, but a standard array is much faster
+function createArray(size)
+{
+    return new Array(size)
+}
+
+// Resize the grid:
+function resize() {
+    // First up-sample the macroscopic variables into temporary arrays at max resolution:
+    var tempRho = new Array(canvas.width*canvas.height);
+    var tempUx = new Array(canvas.width*canvas.height);
+    var tempUy = new Array(canvas.width*canvas.height);
+    var tempBarrier = new Array(canvas.width*canvas.height);
+    for (var y=0; y<canvas.height; y++) {
+        for (var x=0; x<canvas.width; x++) {
+            var tempIndex = x + y*canvas.width;
+            var xOld = Math.floor(x / config.pxPerSquare);
+            var yOld = Math.floor(y / config.pxPerSquare);
+            var oldIndex = xOld + yOld*xdim;
+            tempRho[tempIndex] = rho[oldIndex];
+            tempUx[tempIndex] = ux[oldIndex];
+            tempUy[tempIndex] = uy[oldIndex];
+            tempBarrier[tempIndex] = barrier[oldIndex];
+        }
+    }
+    // Get new size from GUI selector:
+    var oldPxPerSquare = config.pxPerSquare;
+    config.pxPerSquare = Number(sizeSelect.options[sizeSelect.selectedIndex].value);
+    var growRatio = oldPxPerSquare / config.pxPerSquare;
+    xdim = canvas.width / config.pxPerSquare;
+    ydim = canvas.height / config.pxPerSquare;
+    // Create new arrays at the desired resolution:
+    n0 = createArray(xdim*ydim);
+    nN = createArray(xdim*ydim);
+    nS = createArray(xdim*ydim);
+    nE = createArray(xdim*ydim);
+    nW = createArray(xdim*ydim);
+    nNE = createArray(xdim*ydim);
+    nSE = createArray(xdim*ydim);
+    nNW = createArray(xdim*ydim);
+    nSW = createArray(xdim*ydim);
+    rho = createArray(xdim*ydim);
+    ux = createArray(xdim*ydim);
+    uy = createArray(xdim*ydim);
+    curl = createArray(xdim*ydim);
+    barrier = new Array(xdim*ydim);
+    // Down-sample the temporary arrays into the new arrays:
+    for (var yNew=0; yNew<ydim; yNew++) {
+        for (var xNew=0; xNew<xdim; xNew++) {
+            var rhoTotal = 0;
+            var uxTotal = 0;
+            var uyTotal = 0;
+            var barrierTotal = 0;
+            for (var y=yNew*config.pxPerSquare; y<(yNew+1)*config.pxPerSquare; y++) {
+                for (var x=xNew*config.pxPerSquare; x<(xNew+1)*config.pxPerSquare; x++) {
+                    var index = x + y*canvas.width;
+                    rhoTotal += tempRho[index];
+                    uxTotal += tempUx[index];
+                    uyTotal += tempUy[index];
+                    if (tempBarrier[index]) barrierTotal++;
+                }
+            }
+            setEquil(xNew, yNew, uxTotal/(config.pxPerSquare*config.pxPerSquare), uyTotal/(config.pxPerSquare*config.pxPerSquare), rhoTotal/(config.pxPerSquare*config.pxPerSquare))
+            curl[xNew+yNew*xdim] = 0.0;
+            barrier[xNew+yNew*xdim] = (barrierTotal >= config.pxPerSquare*config.pxPerSquare/2);
+        }
+    }
+    setBoundaries();
+    if (tracerCheck.checked) {
+        for (var t=0; t<nTracers; t++) {
+            tracerX[t] *= growRatio;
+            tracerY[t] *= growRatio;
+        }
+    }
+    sensorX = Math.round(sensorX * growRatio);
+    sensorY = Math.round(sensorY * growRatio);
+    //computeCurl();
+    paintCanvas();
+    resetTimer();
+}
+
 // Function to initialize or re-initialize the fluid, based on speed slider setting:
 function initFluid() {
-    
-    solver.init(config.speed)
-    
-    paintCanvas();
+    // Amazingly, if I nest the y loop inside the x loop, Firefox slows down by a factor of 20
+    var u0 = Number(config.speed);
+    for (var y=0; y<ydim; y++) {
+        for (var x=0; x<xdim; x++) {
+            setEquil(x, y, u0, 0, 1);
+            curl[x+y*xdim] = 0.0;
+        }
+    }
+paintCanvas();
 }
 
 // Function to start or pause the simulation:
 function startStop() {
-    this.running = !this.running;
-    if (this.running) {
+    running = !running;
+    if (running) {
         startButton.value = "Pause";
         resetTimer();
         simulate();
@@ -645,10 +901,60 @@ function adjustViscosity() {
     viscValue.innerHTML = Number(config.viscosity).toFixed(3);
 }
 
+// Show or hide the data area:
+function showData() {
+    if (dataCheck.checked) {
+        dataSection.style.display="block";
+    } else {
+        dataSection.style.display="none";
+    }
+}
+
+// Start or stop collecting data:
+function startOrStopData() {
+    collectingData = !collectingData;
+    if (collectingData) {
+        time = 0;
+        dataArea.innerHTML = "Time \tDensity\tVel_x \tVel_y \tForce_x\tForce_y\n";
+        writeData();
+        dataButton.value = "Stop data collection";
+        showingPeriod = false;
+        periodButton.value = "Show F_y period";
+    } else {
+        dataButton.value = "Start data collection";
+    }
+}
+
+// Write one line of data to the data area:
+function writeData() {
+    var timeString = String(time);
+    while (timeString.length < 5) timeString = "0" + timeString;
+    sIndex = sensorX + sensorY*xdim;
+    dataArea.innerHTML += timeString + "\t" + Number(rho[sIndex]).toFixed(4) + "\t"
+        + Number(ux[sIndex]).toFixed(4) + "\t" + Number(uy[sIndex]).toFixed(4) + "\t"
+        + Number(barrierFx).toFixed(4) + "\t" + Number(barrierFy).toFixed(4) + "\n";
+    dataArea.scrollTop = dataArea.scrollHeight;
+}
+
+// Handle click to "show period" button
+function showPeriod() {
+    showingPeriod = !showingPeriod;
+    if (showingPeriod) {
+        time = 0;
+        lastBarrierFy = 1.0;	// arbitrary positive value
+        lastFyOscTime = -1.0;	// arbitrary negative value
+        dataArea.innerHTML = "Period of F_y oscillation\n";
+        periodButton.value = "Stop data";
+        collectingData = false;
+        dataButton.value = "Start data collection";
+    } else {
+        periodButton.value = "Show F_y period";
+    }
+}
 
 // Replaces current barriers with a preset barrier. 0 for none.
 function placePresetBarrier(index) {    
-    solver.clearBarriers();
+    clearBarriers();
     if (index == 0) return;    
     var bCount = barrierList[index-1].locations.length/2;	// number of barrier sites
     // To decide where to place it, find minimum x and min/max y:
@@ -673,6 +979,28 @@ function placePresetBarrier(index) {
         var y = barrierList[index-1].locations[siteIndex+1] - yAverage + Math.round(ydim/2);
         addBarrier(x, y);
     }
+}
+
+// Clear all barriers:
+function clearBarriers() {
+    for (var x=0; x<xdim; x++) {
+        for (var y=0; y<ydim; y++) {
+            barrier[x+y*xdim] = false;
+        }
+    }
+}
+
+// Write all the barrier locations to the data area:
+function showBarrierLocations() {
+    dataArea.innerHTML = '{name:"Barrier locations",\n';
+    dataArea.innerHTML += 'locations:[\n';
+    for (var y=1; y<ydim-1; y++) {
+        for (var x=1; x<xdim-1; x++) {
+            if (barrier[x+y*xdim]) dataArea.innerHTML += x + ',' + y + ',\n';
+        }
+    }
+    dataArea.innerHTML = dataArea.innerHTML.substr(0, dataArea.innerHTML.length-2); // remove final comma
+    dataArea.innerHTML += '\n]},\n';
 }
 
 // Print debugging data:

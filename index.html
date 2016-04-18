@@ -29,7 +29,8 @@
         #icons {
             margin: 0;
             padding: 0;
-        }
+        }               
+        
         #icons li {
             margin: 2px;
             position: relative;
@@ -45,8 +46,11 @@
         
         #radioset label { width: 200px }
         
-        #speedSlider { width: 300px }
-        
+        #fluidSpeedSlider { 
+            width: 300px;                            
+        }
+        #fluidSpeedSlider .ui-slider-range { background: #007fff; }
+                
         .fakewindowcontain .ui-widget-overlay {
             position: absolute;
         }
@@ -69,17 +73,21 @@
 
     <body>
 
-    <h2>Experiment-1: Drag</h2>
-
-    <p>By Matthew Aitchison</p> 
+    <h2>Fluid Dynamics Toy Box</h2>
+    
+    <!-- Info label-->    
+    <div>
+    Force (drag): <span id="dragLabel">...</span> 
+    FPS: <span id="fpsLabel">...</span> 
+    </div>    
 
     <canvas id="theCanvas" width="600" height="240">This application runs only in modern
     browsers. For best results, use Google Chrome.</canvas>
 
     <!-- Reset / Play -->        
     <div>
-        <input id="resetFluidButton" type="button" onclick="initFluid()" value="Reset">	    
-        <input id="startButton" type="button" onclick="startStop()" value="Start">        
+        <input id="resetFluidButton" type="button" onclick="fds._resetFluid()" value="Reset">	    
+        <input id="startButton" type="button" onclick="fds.startStop()" value="Start">        
     </div>
     
     <!-- Visualization -->        
@@ -95,33 +103,20 @@
     
     <br>
     
-    <!-- Fluid Speed Slider -->
-    Fluid speed: <span id="speedValue">0.100</span>     
-    <div id="speedSlider"></div>
-    <div>       
-        
-    </div>    
-    <br>
-    
-    <!-- Plotting -->        
-    <div>
-        <input id="plotButton" type="button" onclick="autoPlot_laminar()" value="Run Laminar Experiment">
-        <input id="plotButton2" type="button" onclick="autoPlot_nonlaminar()" value="Run Non Laminar Experiment">
-    </div>   
-    
-    
-    <div>
-    Force (drag): <span id="dragLabel">...</span> 
-    FPS: <span id="fpsLabel">...</span> 
+    <!-- Fluid Speed Slider -->    
+    <div align="left">
+        <label for="fluidSpeedValue">Fluid speed:</label>
+        <input type="text" id="fluidSpeedLabel" readonly style="border:0; color:#f6931f; font-weight:bold;">
+
+        <div id="fluidSpeedSlider"></div>
     </div>
-    <p style="text-align:left">
-    In this experiment we will test the effects of drag on an object under various conditions.
-
-
+             
     <div id="tester" style="width:600px;height:250px;"></div>
 
     <script src="./Fluid Dynamics Simulation_files/barrierdata.js"></script>
-    <script src="lattice_boltzmann.js"></script>   
+    <script src="helper.js"></script>
+    <script src="LBESolver_JS.js"></script>   
+    <script src="fluidDynamics.js"></script>   
 
     <script src="./UI/external/jquery/jquery.js"></script>
     <script src="./UI/jquery-ui.js"></script>
@@ -150,9 +145,32 @@
         
     
         // initialization
+        fds = new FluidDynamics();
+        fds.reset();
+
+                            
+        $(function() {
+            $( "#fluidSpeedSlider" ).slider({
+                range: "min",
+                value: 0.10,
+                min: 0.00,
+                step: 0.0125,
+                max: 0.18,
+                slide: function( event, ui ) {
+                    $( "#fluidSpeedLabel" ).val( ui.value );
+                    try {
+                        _adjustSpeed()
+                    } catch(exception) {                       
+                    }
+                }
+            });
+            $( "#fluidSpeedLabel" ).val( $( "#fluidSpeedSlider" ).slider( "value" ) );
+        });
         
-        // start the simulation on page load
-        startStop()
+        // globals to our UI controls
+        var speedLabel = document.getElementById('fluidSpeedLabel');
+        var speedSlider = document.getElementById('fluidSpeedSlider');	
+        var plotButtons = document.getElementById('radioset');	
         
         // get jquery up and running
         $( "#radioset" ).buttonset();
@@ -162,33 +180,18 @@
         
         $( "#plotButton" ).button();                              
         $( "#plotButton2" ).button();                              
-
-        
-        $( "#speedSlider" ).slider({
-            orientation: "horizontal",
-            range: "min",
-            min: 0.00,
-            max: 0.18,
-            step: 0.0125,
-            value: 0.10,
-            slide: _adjustSpeed,
-            change: _adjustSpeed
-        });
         
         // hooks
         
         $( "#radioset" ).click(function() {
             _setPlot()
         });
-
-
-        // globals to our UI controls
-        var speedLabel = document.getElementById('speedValue');
-        var speedSlider = document.getElementById('speedSlider');	
-        var plotButtons = document.getElementById('radioset');	
         
-        ui.dragLabel = document.getElementById('dragLabel');	
-        ui.fpsLabel = document.getElementById('fpsLabel');	
+        fds.ui.dragLabel = document.getElementById('dragLabel');	
+        fds.ui.fpsLabel = document.getElementById('fpsLabel');
+
+        // start the simulation on page load
+        fds.startStop();
         
         _adjustSpeed()
         
@@ -210,12 +213,12 @@
             console.log("Sample."+sample_number)            
             
             // Take sample from previous step.
-            results[config.speed] = currentDragForceMagnitude()
+            results[fds.speed] = currentDragForceMagnitude()
             
             sample_number = sample_number + 1
 
             // Set the next fluid speed
-            config.speed = sample_start + sample_number * sample_step
+            fds.speed = sample_start + sample_number * sample_step
             
             // Cue up a new step
             if (sample_number < sample_count) {
@@ -235,7 +238,7 @@
             sample_start = start
             sample_step = step 
             
-            config.speed = sample_start
+            fds.speed = sample_start
             
             initFluid()
                    
@@ -285,15 +288,17 @@
         
         // Show value of flow speed setting:
         function _adjustSpeed() {            
-            value = $('#speedSlider').slider("value");
+            console.log("adjusting")
+            value = $( "#fluidSpeedSlider" ).slider("value");
             console.log(value)
-            config.speed = value
+            fds.speed = value
             speedLabel.innerHTML = Number(value).toFixed(3);        
+            
         }
         
         function _setPlot() {
             value = $('input[name=radio]:checked', '#myform').val();
-            config.plotSelect = value;
+            fds.plotSelect = value;
         }
                      
 
