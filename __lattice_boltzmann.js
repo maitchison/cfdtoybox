@@ -5,9 +5,7 @@
     
     Make sure to include 
         helper.js
-        LBEDefaultSolver
-    
-
+        LBEDefaultSolver.js    
 */
 
 // This just gives me a basic string.format 

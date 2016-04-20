@@ -161,7 +161,7 @@ LBESolver_JS.prototype = {
     setEquilibrium: function (x, y, newux, newuy, newrho) {
         var i = x + y*this.xdim;
         if (typeof newrho == 'undefined') {
-            newrho = rho[i];
+            newrho = this.rho[i];
         }
         var ux3 = 3 * newux;
         var uy3 = 3 * newuy;

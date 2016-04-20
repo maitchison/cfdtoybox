@@ -46,10 +46,32 @@
         
         #radioset label { width: 200px }
         
-        #fluidSpeedSlider { 
+        
+        .brush_button {
+            padding: 3px 2px 0px 2px;            
+            color: black;
+        }
+
+        .selected_button {
+            background-color: #007fff;
+        }
+
+        .standardSlider { 
             width: 300px;                            
         }
-        #fluidSpeedSlider .ui-slider-range { background: #007fff; }
+        .ui-slider-range { background: #007fff; }
+
+        .ui-button .ui-icon.brush-circle {
+            background-image: url(brushbutton_circle.png);
+            width: 32px;
+            height: 32px;
+}       }
+
+        .ui-button .ui-icon.brush-square {
+            background-image: url(brushbutton_square.png);
+            width: 32px;
+            height: 32px;
+}       }
                 
         .fakewindowcontain .ui-widget-overlay {
             position: absolute;
@@ -89,6 +111,7 @@
         <input id="resetFluidButton" type="button" onclick="fds._resetFluid()" value="Reset">	    
         <input id="startButton" type="button" onclick="fds.startStop()" value="Start">        
     </div>
+
     
     <!-- Visualization -->        
     <form id="myform" style="margin-top: 1em;">
@@ -102,20 +125,38 @@
     </form>
     
     <br>
-    
+          
     <!-- Fluid Speed Slider -->    
-    <div align="left">
+    <div>
         <label for="fluidSpeedValue">Fluid speed:</label>
         <input type="text" id="fluidSpeedLabel" readonly style="border:0; color:#f6931f; font-weight:bold;">
 
-        <div id="fluidSpeedSlider"></div>
+        <div id="fluidSpeedSlider" class="standardSlider"></div>
     </div>
              
+    <!-- Brush settings -->
+    <div>
+        <button class="brush_button" id="brushbutton_circle" onclick="setBrushType(this)" value="circle"><img src="brushbutton_circle.png" height=32 width=32 /></button>
+        <button class="brush_button" id="brushbutton_square" onclick="setBrushType(this)" value="square"><img src="brushbutton_square.png" height=32 width=32 /></button>
+        <button class="brush_button" id="brushbutton_hline" onclick="setBrushType(this)" value="hline"><img src="brushbutton_hline.png" height=32 width=32 /></button>
+        <button class="brush_button" id="brushbutton_vline" onclick="setBrushType(this)" value="vline"><img src="brushbutton_vline.png" height=32 width=32 /></button>                      
+        <button class="brush_button selected_button" id="brushbutton_hand" onclick="setBrushType(this)" value="push"><img src="brushbutton_hand.png" height=32 width=32 /></button>                              
+    </div>
+
+    <div>
+        <label for="brushSizeLabel">Brush size:</label>
+        <input type="text" id="brushSizeLabel" readonly style="border:0; color:#f6931f; font-weight:bold;">
+
+        <div id="brushSizeSlider" class="standardSlider"></div>
+    </div>
+
+    <!-- Other stuff -->
+
     <div id="tester" style="width:600px;height:250px;"></div>
 
     <script src="./Fluid Dynamics Simulation_files/barrierdata.js"></script>
     <script src="helper.js"></script>
-    <script src="LBESolver_JS.js"></script>   
+    <script src="LBESolver_JS.js"></script>       
     <script src="fluidDynamics.js"></script>   
 
     <script src="./UI/external/jquery/jquery.js"></script>
@@ -146,25 +187,36 @@
     
         // initialization
         fds = new FluidDynamics();
-        fds.reset();
+        fds.reset();       
 
-                            
-        $(function() {
-            $( "#fluidSpeedSlider" ).slider({
+        $(function () {
+            $("#fluidSpeedSlider").slider({
                 range: "min",
                 value: 0.10,
                 min: 0.00,
                 step: 0.0125,
                 max: 0.18,
-                slide: function( event, ui ) {
-                    $( "#fluidSpeedLabel" ).val( ui.value );
-                    try {
-                        _adjustSpeed()
-                    } catch(exception) {                       
-                    }
+                slide: function (event, ui) {
+                    $("#fluidSpeedLabel").val(ui.value);
+                    fds.speed = ui.value;
                 }
             });
-            $( "#fluidSpeedLabel" ).val( $( "#fluidSpeedSlider" ).slider( "value" ) );
+            $("#fluidSpeedLabel").val($("#fluidSpeedSlider").slider("value"));
+        });
+                            
+        $(function() {
+            $( "#brushSizeSlider" ).slider({
+                range: "min",
+                value: 1,
+                min: 1,
+                step: 1,
+                max: 16,                
+                slide: function( event, ui ) {
+                    $("#brushSizeLabel").val(ui.value);
+                    fds.brushSize = ui.value;
+                } 
+            });
+            $("#brushSizeLabel").val($("#brushSizeSlider").slider("value"));
         });
         
         // globals to our UI controls
@@ -179,8 +231,14 @@
         $( "#startButton" ).button();
         
         $( "#plotButton" ).button();                              
-        $( "#plotButton2" ).button();                              
-        
+        $("#plotButton2").button();
+
+        $("#brushbutton_circle").button();
+        $("#brushbutton_square").button();
+        $("#brushbutton_hline").button();
+        $("#brushbutton_vline").button();
+        $("#brushbutton_hand").button();
+
         // hooks
         
         $( "#radioset" ).click(function() {
@@ -192,9 +250,7 @@
 
         // start the simulation on page load
         fds.startStop();
-        
-        _adjustSpeed()
-        
+                        
         var results = []
         var sample_number
         var sample_count 
@@ -206,6 +262,17 @@
             var Fx = barrierFx;
             var Fy = barrierFy;
             return Math.sqrt(Fx*Fx + Fy*Fy).toFixed(3);            
+        }
+
+        function setBrushType(button) {
+            console.log('button');
+            fds.brushType = button.value;
+            $("#brushbutton_circle").removeClass('selected_button');
+            $("#brushbutton_square").removeClass('selected_button');
+            $("#brushbutton_hline").removeClass('selected_button');
+            $("#brushbutton_vline").removeClass('selected_button');
+            $("#brushbutton_hand").removeClass('selected_button');
+            $(button).addClass('selected_button');
         }
         
         // Takes the next sample for the plot
@@ -285,17 +352,7 @@
             margin: { t: 0 } } );
             
         }
-        
-        // Show value of flow speed setting:
-        function _adjustSpeed() {            
-            console.log("adjusting")
-            value = $( "#fluidSpeedSlider" ).slider("value");
-            console.log(value)
-            fds.speed = value
-            speedLabel.innerHTML = Number(value).toFixed(3);        
-            
-        }
-        
+                
         function _setPlot() {
             value = $('input[name=radio]:checked', '#myform').val();
             fds.plotSelect = value;

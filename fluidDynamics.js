@@ -51,6 +51,20 @@ function FluidDynamics() {
     this.sensor = false;
     this.showForce = true;
 
+    this.brushSize = 2;
+    this.brushType = "push";
+
+    this.oldMouseX = -1;
+    this.oldMouseY = -1;
+
+    this.pushX = 0;
+    this.pushY = 0;
+    this.pushUX = 0;
+    this.pushUY = 0;
+
+    // mouse location in grid co-ords.
+    this.grid = {x: 0, y: 0};    
+
     // UI components
     this.ui = {}
        
@@ -60,19 +74,8 @@ function FluidDynamics() {
     // Initialize a solver
     this.xdim = this.canvas.width / this.pxPerSquare;			// grid dimensions for simulation
     this.ydim = this.canvas.height / this.pxPerSquare;
-    this.solver = new LBESolver_JS(this.xdim, this.ydim);    
-
-    // UI hooks.
-    /*
-    this.canvas.addEventListener('mousedown', mouseDown, false);
-    this.canvas.addEventListener('mousemove', mouseMove, false);
-    document.body.addEventListener('mouseup', mouseUp, false);	// button release could occur outside canvas
-    this.canvas.addEventListener('touchstart', mouseDown, false);
-    this.canvas.addEventListener('touchmove', mouseMove, false);
-    document.body.addEventListener('touchend', mouseUp, false);
-    */
-
-
+    this.solver = new LBESolver_JS(this.xdim, this.ydim);
+    
 };
 
 var instance;
@@ -104,7 +107,7 @@ FluidDynamics.prototype = {
     
         // Boundaries and input.    
         this._setBoundaries();    
-        //this.processInput()
+        this._processInput();
     
         // Run simulation    
         var simulationStartTime = new Date().getTime();
@@ -154,12 +157,30 @@ FluidDynamics.prototype = {
     clearBarriers: function () {
         var xdim = this.xdim;
         var ydim = this.ydim;         
-
         for (var x = 0; x < xdim; x++) {
             for (var y = 0; y < ydim; y++) {
                 this.solver.barrier[x + y * xdim] = false;
             }
         }
+    },
+
+    // Sets a barrier at a given grid coordinate location:
+    setBarrier: function (x, y, value) {
+        var xdim = this.xdim;
+        var ydim = this.ydim;
+        if ((x > 1) && (x < xdim - 2) && (y > 1) && (y < ydim - 2)) {
+            this.solver.barrier[x+y*xdim] = value;
+        }
+    },
+
+    // Add a barrier at a given grid coordinate location:
+    addBarrier: function (x, y) {
+        this.setBarrier(x, y, true)
+    },
+
+    // Remove a barrier at a given grid coordinate location:
+    removeBarrier: function (x, y) {
+        this.setBarrier(x, y, false)
     },
 
     // Function to start or pause the simulation:
@@ -176,11 +197,116 @@ FluidDynamics.prototype = {
             startButton.value = " Run ";
         }
     },
-    
+        
     // ---------------------------
     // Private
     // ---------------------------    
+    
+    // Paints barriers with a brush of given type and size at location.  If value is set to false barriers will be removed instead of added. 
+    // brushType: "circle, square, hline, vline"    
+    // target: if "canvas" then brush will be painted to canvas instead of adjusting the barriers.
+    _applyBrush: function (atX, atY, brushType, brushSize, value, target) {
+        // this is really quite a messy function, not sure why this stuff is so hard in JS?  I just wanted to be able to pass a function and maybe have some defaults,
+        // but passing functions like this.setBarrier doesn't work as this ends up being null for some reason?
 
+        var paintToCanvas = (target == "canvas");
+
+        if (atX < 0 || atY < 0 || atX > this.xdim || atY > this.ydim)
+            return;
+
+        if (brushType == "circle") {
+            var radius = Math.abs(Math.round(brushSize)) - 1;
+            var adjustedRadius = radius + 0.25;
+            for (var y = -radius; y <= +radius; y++) {
+                var lineWidth = Math.round(Math.sqrt(adjustedRadius * adjustedRadius- y * y));
+                for (var x = -lineWidth; x <= +lineWidth; x++) {
+                    if (paintToCanvas) {
+                        this._drawBarrier(x + atX, y + atY, value);                                                                        
+                    }  else
+                        this.setBarrier(x + atX, y + atY, value)
+                }
+            }
+        }
+
+        if (brushType == "square") {
+            var radius = Math.abs(Math.round(brushSize));
+            var lineWidth = Math.round(radius)
+            for (var y = -radius; y < +radius; y++) 
+                for (var x = -lineWidth; x < +lineWidth; x++) 
+                    if (paintToCanvas)
+                        this._drawBarrier(x + atX, y + atY, value)
+                    else
+                        this.setBarrier(x + atX, y + atY, value)
+        }
+
+        if (brushType == "hline") {
+            var radius = Math.abs(Math.round(brushSize));
+            var y = 0;
+            for (var x = -radius; x < +radius; x++) 
+                if (paintToCanvas)
+                    this._drawBarrier(x + atX, y + atY, value)
+                else
+                    this.setBarrier(x + atX, y + atY, value)
+        }
+
+        if (brushType == "vline") {
+            var radius = Math.abs(Math.round(brushSize));
+            var x = 0;
+            for (var y = -radius; y < +radius; y++) 
+                if (paintToCanvas)
+                    this._drawBarrier(x + atX, y + atY, value)
+                else
+                    this.setBarrier(x + atX, y + atY, value)
+        }
+    },
+
+    // Converts from canvas location to grid co-ordantes.  Returns results (x,y)
+    _gridCoords: function(canvasX, canvasY) {
+        var result = {}
+        result.x = Math.floor(canvasX / this.pxPerSquare);
+        result.y = Math.floor((canvas.height - 1 - canvasY) / this.pxPerSquare); 	// off by 1?
+        return result;
+    },
+
+    _processInput: function() {
+        
+        // find mouse location in grid co-ords
+        this.grid = this._gridCoords(mouse.x, mouse.y);
+        
+        // add barrier
+        if (mouse.isButtonDown) {            
+            this._applyBrush(this.grid.x, this.grid.y, this.brushType, this.brushSize, !key.shift);
+            this._paintCanvas();
+        }
+
+        // push:
+        if (this.brushType == "push") {
+            if (mouse.isButtonDown) {
+                if (this.oldMouseX >= 0) {
+                    this.pushX = this.grid.x;
+                    this.pushY = this.grid.y;
+                    this.pushUX = (mouse.x - this.oldMouseX) / this.pxPerSquare / this.steps;
+                    this.pushUY = -(mouse.y - this.oldMouseY) / this.pxPerSquare /  this.steps;	// y axis is flipped
+                    if (Math.abs(this.pushUX) > 0.1) this.pushUX = 0.1 * Math.abs(this.pushUX) / this.pushUX;
+                    if (Math.abs(this.pushUY) > 0.1) this.pushUY = 0.1 * Math.abs(this.pushUY) / this.pushUY;
+                    this.pushing = true;
+                }
+                this.oldMouseX = mouse.x; this.oldMouseY = mouse.y;
+            } else {
+                this.pushing = false;
+                this.oldMouseX = -1; this.oldMouseY = -1;
+            }        
+        }
+        
+    },
+
+    // Draw a preview of current brush 
+    _drawBrush: function () {
+        if (this.brushType == "")
+            return;
+        this._applyBrush(this.grid.x, this.grid.y, this.brushType, this.brushSize, !key.shift, "canvas");
+    },
+    
     // Paint the canvas:
     _paintCanvas: function () {
         var cIndex = 0;
@@ -223,12 +349,19 @@ FluidDynamics.prototype = {
             }
         }
 
+        this._drawBrush();
+
         this.context.putImageData(this.image, 0, 0);
 
         // Draw tracers, force vector, and/or sensor if appropriate:        
         if (this.tracers) drawTracers();
         if (this.flowline) drawFlowlines();
         if (this.sensor) drawSensor();
+    },
+
+    // A special function that can be called by _applyBrush to paint potential barriers onto the canvas.
+    _drawBarrier: function (x, y, value) {
+        this._colorSquare(Math.round(x), Math.round(y), 255, 255, 255)
     },
 
     // Replaces current barriers with a preset barrier. 0 for none.
@@ -264,17 +397,10 @@ FluidDynamics.prototype = {
         for (var siteIndex = 0; siteIndex < 2 * bCount; siteIndex += 2) {
             var x = barrierList[index - 1].locations[siteIndex] - xMin + Math.round(ydim / 3);
             var y = barrierList[index - 1].locations[siteIndex + 1] - yAverage + Math.round(ydim / 2);
-            this._addBarrier(x, y);
+            this.addBarrier(x, y);
         }
     },
-
-    // Add a barrier at a given grid coordinate location:
-    _addBarrier: function (x, y) {
-    if ((x > 1) && (x < this.xdim-2) && (y > 1) && (y < this.ydim-2)) {
-        this.solver.barrier[x+y*this.xdim] = true;
-        }
-    },
-
+  
     // Set the fluid variables at the boundaries, according to the current slider value:
     // Todo: this needs some work
     _setBoundaries: function () {
@@ -297,7 +423,7 @@ FluidDynamics.prototype = {
             this.solver.collide();
             this.solver.stream();
             //if (this.tracers) this.moveTracers();
-            //if (this.pushing) this.push(pushX, pushY, pushUX, pushUY);
+            if (this.pushing) this._push(this.pushX, this.pushY, this.pushUX, this.pushUY);
             time++;
             if (showingPeriod && (barrierFy > 0) && (lastBarrierFy <=0)) {
                 var thisFyOscTime = time - barrierFy/(barrierFy-lastBarrierFy);	// interpolate when Fy changed sign
@@ -343,10 +469,15 @@ FluidDynamics.prototype = {
 
     // Color a single grid square in the image data array, one pixel at a time (rgb each in range 0 to 255):
     _colorSquare: function (x, y, r, g, b) {
+
+        if ((x < 0) || (y < 0) || (x >= this.xdim) || (y >= this.ydim))
+            return;
+
         var flippedy = this.ydim - y - 1;			// put y=0 at the bottom
         var data = this.image.data
         var width = this.image.width
         var pxPerSquare = this.pxPerSquare
+
         for (var py=flippedy*pxPerSquare; py<(flippedy+1)*pxPerSquare; py++) {
             for (var px=x*pxPerSquare; px<(x+1)*pxPerSquare; px++) {
                 var index = (px + py*width) * 4;
@@ -354,7 +485,8 @@ FluidDynamics.prototype = {
                 data[index+1] = g;
                 data[index+2] = b;
             }
-        }       
+        }
+
     },
 
     // Function to initialize or re-initialize the fluid, based on speed slider setting:    
@@ -362,6 +494,35 @@ FluidDynamics.prototype = {
         console.log("resting fluid. "+this.speed)
         this.solver.init(this.speed)        
     },
+
+    // "Drag" the fluid in a direction determined by the mouse (or touch) motion:
+    // (The drag affects a "circle", 5 px in diameter, centered on the given coordinates.)
+    _push: function (pushX, pushY, pushUX, pushUY) {
+
+        // First make sure we're not too close to edge:
+        var margin = 3;
+
+        var xdim = this.xdim;
+        var ydim = this.ydim;
+
+        var radius = 2;
+
+        if ((pushX > margin) && (pushX < xdim-1-margin) && (pushY > margin) && (pushY < ydim-1-margin)) {
+            for (var dx = -radius; dx <= radius; dx++) {
+                this.solver.setEquilibrium(pushX + dx, pushY + 2, pushUX, pushUY);
+                this.solver.setEquilibrium(pushX + dx, pushY - 2, pushUX, pushUY);
+            }
+
+            for (var dx = -radius; dx <= radius; dx++) {
+                for (var dy = -radius; dy <= radius; dy++) {
+                    this.solver.setEquilibrium(pushX + dx, pushY + dy, pushUX, pushUY);
+                }
+            }
+
+        }   
+    },
+
+    
     
 }
     
@@ -430,3 +591,18 @@ function resetTimer() {
     stepCount = 0;
     startTime = (new Date()).getTime();
 }
+
+function doKeyPress(e) {
+    // this is a bit of a hack, only one instance will work.  Better would be to add hooks for every instance but I had trouble with calling this.something when using events?
+    console.log('pressed key ' + e.keyCode);
+    if (instance != null) {
+        if (e.keyCode == 45) 
+            instance.brushSize = Math.max(1, instance.brushSize - 1);        
+        if (e.keyCode == 61)
+            instance.brushSize = Math.min(99, instance.brushSize + 1);
+    }
+}
+
+// hook for keypresses
+
+document.body.addEventListener('keypress', doKeyPress, false);

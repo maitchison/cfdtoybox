@@ -87,7 +87,7 @@ var lastBarrierFy = 1;						// for determining when F_y oscillation begins
 var lastFyOscTime = 0;						// for calculating F_y oscillation period
 
 // start with a solver
-var solver = new LBESolver_JS(xdim, ydim);
+var solver = new LBESolver_flat(xdim, ydim);
 
 canvas.addEventListener('mousedown', mouseDown, false);
 canvas.addEventListener('mousemove', mouseMove, false);
