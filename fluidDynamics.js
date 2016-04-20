@@ -20,6 +20,63 @@ var PlotType = {
 };
 
 // -----------------------------------------------
+// SENSOR
+// -----------------------------------------------
+
+function FDSSensor() {
+    this.x = 0;
+    this.y = 0;
+}
+
+FDSSensor.prototype = {
+    constructor: FDSSensor,
+
+    // Draw the sensor and its associated data display:
+    draw: function (fds) {
+        var canvasX = (this.x+0.5) * fds.pxPerSquare;
+        var canvasY = fds.canvas.height - (this.y + 0.5) * fds.pxPerSquare;
+        var context = fds.context;
+        context.fillStyle = "rgba(180,180,180,0.7)";	// first draw gray filled circle
+        context.beginPath();
+        context.arc(canvasX, canvasY, 7, 0, 2*Math.PI);
+        context.fill();
+        context.strokeStyle = "#404040";				// next draw cross-hairs
+        context.linewidth = 1;
+        context.beginPath();
+        context.moveTo(canvasX, canvasY-10);
+        context.lineTo(canvasX, canvasY+10);
+        context.moveTo(canvasX-10, canvasY);
+        context.lineTo(canvasX+10, canvasY);
+        context.stroke();
+        context.fillStyle = "rgba(255,255,255,0.5)";	// draw rectangle behind text
+        canvasX += 10;
+        context.font = "12px Monospace";
+        var rectWidth = context.measureText("00000000000").width+6;
+        var rectHeight = 58;
+        if (canvasX+rectWidth > canvas.width) canvasX -= (rectWidth+20);
+        if (canvasY+rectHeight > canvas.height) canvasY = canvas.height - rectHeight;
+        context.fillRect(canvasX, canvasY, rectWidth, rectHeight);
+        context.fillStyle = "#000000";					// finally draw the text
+        canvasX += 3;
+        canvasY += 12;
+        var coordinates = "  (" + this.x + "," + this.y + ")";
+        context.fillText(coordinates, canvasX, canvasY);
+        canvasY += 14;
+        var rhoSymbol = String.fromCharCode(parseInt('03C1',16));
+        var index = Math.round(this.x) + Math.round(this.y) * fds.xdim;
+        context.fillText(" " + rhoSymbol + " =  " + Number(fds.solver.rho[index]).toFixed(3), canvasX, canvasY);
+        canvasY += 14;
+        var digitString = Number(fds.solver.ux[index]).toFixed(3);
+        if (fds.solver.ux[index] >= 0) digitString = " " + digitString;
+        context.fillText("ux = " + digitString, canvasX, canvasY);
+        canvasY += 14;
+        digitString = Number(fds.solver.uy[index]).toFixed(3);
+        if (fds.solver.uy[index] >= 0) digitString = " " + digitString;
+        context.fillText("uy = " + digitString, canvasX, canvasY);
+    },
+}
+
+// -----------------------------------------------
 // CLASS
 // -----------------------------------------------
 
@@ -47,23 +104,34 @@ function FluidDynamics() {
     this.barrierTemplate = 6;
 
     this.tracers = false;
-    this.flowline = false;
-    this.sensor = false;
+    this.flowlines = false;
+    this.showSensor = false;
     this.showForce = true;
 
     this.brushSize = 2;
     this.brushType = "push";
 
+    // sensor
+    this.sensor = new FDSSensor();
+
+    // pushing
     this.oldMouseX = -1;
     this.oldMouseY = -1;
-
     this.pushX = 0;
     this.pushY = 0;
     this.pushUX = 0;
     this.pushUY = 0;
 
+    // tracers
+    this.nTracers = 144;
+    this.tracerX = new Array(nTracers);
+    this.tracerY = new Array(nTracers);
+    for (var t=0; t<nTracers; t++) {
+        this.tracerX[t] = 0.0; this.tracerY[t] = 0.0;
+    }
+
     // mouse location in grid co-ords.
-    this.grid = {x: 0, y: 0};    
+    this.grid = {x: 60, y: 0};    
 
     // UI components
     this.ui = {}
@@ -75,6 +143,9 @@ function FluidDynamics() {
     this.xdim = this.canvas.width / this.pxPerSquare;			// grid dimensions for simulation
     this.ydim = this.canvas.height / this.pxPerSquare;
     this.solver = new LBESolver_JS(this.xdim, this.ydim);
+
+    this.sensor.x = this.xdim / 2;
+    this.sensor.y = this.ydim / 2;
     
 };
 
@@ -168,6 +239,9 @@ FluidDynamics.prototype = {
     setBarrier: function (x, y, value) {
         var xdim = this.xdim;
         var ydim = this.ydim;
+        // we can't put barriers on the edges at the moment because it causes some strange effects.  One solution might be to extend the area by 5 pixels
+        // top and bottom and the just now show those areas.
+        //if ((x > 1) && (x < xdim - 2) && (y >= 0) && (y < ydim)) {
         if ((x > 1) && (x < xdim - 2) && (y > 1) && (y < ydim - 2)) {
             this.solver.barrier[x+y*xdim] = value;
         }
@@ -197,10 +271,51 @@ FluidDynamics.prototype = {
             startButton.value = " Run ";
         }
     },
+
+    // Initialize the tracer particles:
+    resetTracers: function () {         
+        var nRows = Math.ceil(Math.sqrt(this.nTracers));
+        var dx = this.xdim / nRows;
+        var dy = this.ydim / nRows;
+        var nextX = dx / 2;
+        var nextY = dy / 2;
+        for (var t=0; t<this.nTracers; t++) {
+            this.tracerX[t] = nextX;
+            this.tracerY[t] = nextY;            
+            for (var tries = 0; tries < 100; tries ++) {
+                nextX += dx;
+                if (nextX > this.xdim) {
+                    nextX = dx / 2;
+                    nextY += dy;
+                }
+                i = Math.round(nextX) + Math.round(nextY) * this.xdim;
+                if (!this.solver.barrier[i])
+                    break                
+            }
+        }
+        this._paintCanvas();
+    },
         
     // ---------------------------
     // Private
-    // ---------------------------    
+    // --------------------------- 
+    
+    // Move the tracer particles:
+    _moveTracers: function () {        
+        for (var t=0; t<this.nTracers; t++) {
+            var roundedX = Math.round(this.tracerX[t]);
+            var roundedY = Math.round(this.tracerY[t]);
+            var index = roundedX + roundedY*this.xdim;
+            this.tracerX[t] += this.solver.ux[index];
+            this.tracerY[t] += this.solver.uy[index];
+            var collided = (this.solver.barrier[index]);
+            if (collided || (this.tracerX[t] > this.xdim - 1)) {                
+                this.tracerX[t] = 0;
+                this.tracerY[t] = Math.random() * this.ydim;
+            }            
+        }
+    },
+
     
     // Paints barriers with a brush of given type and size at location.  If value is set to false barriers will be removed instead of added. 
     // brushType: "circle, square, hline, vline"    
@@ -272,31 +387,47 @@ FluidDynamics.prototype = {
         
         // find mouse location in grid co-ords
         this.grid = this._gridCoords(mouse.x, mouse.y);
-        
-        // add barrier
-        if (mouse.isButtonDown) {            
-            this._applyBrush(this.grid.x, this.grid.y, this.brushType, this.brushSize, !key.shift);
-            this._paintCanvas();
+                
+        if (mouse.isButtonDown) {
+
+            if (this.showSensor) {                
+                var dx = (this.grid.x - this.sensor.x) * this.pxPerSquare;
+                var dy = (this.grid.y - this.sensor.y) * this.pxPerSquare;
+                if (Math.sqrt(dx * dx + dy * dy) <= 8) {
+                    draggingSensor = true;
+                }
+            }
+
+            if (draggingSensor) {                
+                this.sensor.x = clip(this.grid.x, 0, this.xdim - 1);
+                this.sensor.y = clip(this.grid.y, 0, this.ydim - 1);
+                this._paintCanvas();
+                return;
+            } else if (this.brushType == "push") {
+                // push:
+                if (mouse.isButtonDown) {
+                    if (this.oldMouseX >= 0) {
+                        this.pushX = this.grid.x;
+                        this.pushY = this.grid.y;
+                        this.pushUX = (mouse.x - this.oldMouseX) / this.pxPerSquare / this.steps;
+                        this.pushUY = -(mouse.y - this.oldMouseY) / this.pxPerSquare / this.steps;	// y axis is flipped
+                        if (Math.abs(this.pushUX) > 0.1) this.pushUX = 0.1 * Math.abs(this.pushUX) / this.pushUX;
+                        if (Math.abs(this.pushUY) > 0.1) this.pushUY = 0.1 * Math.abs(this.pushUY) / this.pushUY;
+                        this.pushing = true;
+                    }
+                    this.oldMouseX = mouse.x; this.oldMouseY = mouse.y;
+                } else {
+                    this.pushing = false;
+                    this.oldMouseX = -1; this.oldMouseY = -1;
+                }
+            } else {
+                // add barrier
+                this._applyBrush(this.grid.x, this.grid.y, this.brushType, this.brushSize, !key.shift);
+                this._paintCanvas();
+            }
         }
 
-        // push:
-        if (this.brushType == "push") {
-            if (mouse.isButtonDown) {
-                if (this.oldMouseX >= 0) {
-                    this.pushX = this.grid.x;
-                    this.pushY = this.grid.y;
-                    this.pushUX = (mouse.x - this.oldMouseX) / this.pxPerSquare / this.steps;
-                    this.pushUY = -(mouse.y - this.oldMouseY) / this.pxPerSquare /  this.steps;	// y axis is flipped
-                    if (Math.abs(this.pushUX) > 0.1) this.pushUX = 0.1 * Math.abs(this.pushUX) / this.pushUX;
-                    if (Math.abs(this.pushUY) > 0.1) this.pushUY = 0.1 * Math.abs(this.pushUY) / this.pushUY;
-                    this.pushing = true;
-                }
-                this.oldMouseX = mouse.x; this.oldMouseY = mouse.y;
-            } else {
-                this.pushing = false;
-                this.oldMouseX = -1; this.oldMouseY = -1;
-            }        
-        }
+        
         
     },
 
@@ -313,7 +444,7 @@ FluidDynamics.prototype = {
         var contrast = Math.pow(1.2, Number(this.contrast));
         var plotType = this.plotSelect;
 
-        if (plotType == 4) this.solver.computeCurl();
+        if (plotType == 4 || plotType == 5) this.solver.computeCurl();
         
         var rho = this.solver.rho;
         var ux = this.solver.ux;
@@ -329,6 +460,7 @@ FluidDynamics.prototype = {
                 if (barrier[x + y * xdim]) {
                     cIndex = nColors + 1;	// kludge for barrier color which isn't really part of color map
                 } else {
+                    cIndex = 0;
                     if (plotType == 0) {
                         cIndex = Math.round(nColors * ((rho[x + y * xdim] - 1) * 6 * contrast + 0.5));
                     } else if (plotType == 1) {
@@ -338,9 +470,13 @@ FluidDynamics.prototype = {
                     } else if (plotType == 3) {
                         var speed = Math.sqrt(ux[x + y * xdim] * ux[x + y * xdim] + uy[x + y * xdim] * uy[x + y * xdim]);
                         cIndex = Math.round(nColors * (speed * 4 * contrast));
-                    } else {
+                    } else if (plotType == 4) {
                         cIndex = Math.round(nColors * (curl[x + y * xdim] * 5 * contrast + 0.5));
-                    }                    
+                    } else if (plotType == 5) {                     
+                        cIndex = Math.round(nColors * (this.solver.pressure[x + y * xdim] * 5 * contrast + 0.5));
+                    } else if (plotType == 6) {
+                        cIndex = 200;
+                }                    
                     if (cIndex < 0) cIndex = 0;
                     if (cIndex > nColors) cIndex = nColors;
                 }
@@ -354,15 +490,62 @@ FluidDynamics.prototype = {
         this.context.putImageData(this.image, 0, 0);
 
         // Draw tracers, force vector, and/or sensor if appropriate:        
-        if (this.tracers) drawTracers();
-        if (this.flowline) drawFlowlines();
-        if (this.sensor) drawSensor();
+        if (this.tracers) this._drawTracers();
+        if (this.flowlines) this._drawFlowlines();
+        if (this.showSensor) this.sensor.draw(this);
     },
 
     // A special function that can be called by _applyBrush to paint potential barriers onto the canvas.
     _drawBarrier: function (x, y, value) {
         this._colorSquare(Math.round(x), Math.round(y), 255, 255, 255)
     },
+
+    // Draw the tracer particles:
+    _drawTracers: function () {
+        this.context.fillStyle = "rgb(150,150,150)";
+        for (var t = 0; t < this.nTracers; t++) {            
+            var canvasX = (this.tracerX[t] + 0.5) * this.pxPerSquare;            
+            var canvasY = canvas.height - (this.tracerY[t]+0.5) * this.pxPerSquare;
+            this.context.fillRect(canvasX-1, canvasY-1, 2, 2);
+        }
+    },
+
+    // Draw a grid of short line segments along flow directions:
+    _drawFlowlines: function () {
+        var pxPerFlowline = 10;
+        if (this.pxPerSquare == 1) pxPerFlowline = 6;
+        if (this.pxPerSquare == 2) pxPerFlowline = 8;
+        if (this.pxPerSquare == 5) pxPerFlowline = 12;
+        if ((this.pxPerSquare == 6) || (this.pxPerSquare == 8)) pxPerFlowline = 15;
+        if (this.pxPerSquare == 10) pxPerFlowline = 20;
+        var sitesPerFlowline = pxPerFlowline / this.pxPerSquare;
+        var xLines = this.canvas.width / pxPerFlowline;
+        var yLines = this.canvas.height / pxPerFlowline;
+        for (var yCount=0; yCount<yLines; yCount++) {
+            for (var xCount=0; xCount<xLines; xCount++) {
+                var x = Math.round((xCount+0.5) * sitesPerFlowline);
+                var y = Math.round((yCount+0.5) * sitesPerFlowline);
+                var thisUx = this.solver.ux[x+y*this.xdim];
+                var thisUy = this.solver.uy[x + y * this.xdim];
+                var speed = Math.sqrt(thisUx*thisUx + thisUy*thisUy);
+                if (speed > 0.0001) {
+                    var px = (xCount+0.5) * pxPerFlowline;
+                    var py = this.canvas.height - ((yCount+0.5) * pxPerFlowline);
+                    var scale = 0.5 * pxPerFlowline / speed;
+                    this.context.beginPath();
+                    this.context.moveTo(px-thisUx*scale, py+thisUy*scale);
+                    this.context.lineTo(px+thisUx*scale, py-thisUy*scale);
+                    //context.lineWidth = speed * 5;
+                    var cIndex = Math.round(speed * transBlackArraySize / 0.3);
+                    if (cIndex >= transBlackArraySize) cIndex = transBlackArraySize - 1;
+                    this.context.strokeStyle = transBlackArray[cIndex];
+                    //context.strokeStyle = "rgba(0,0,0,0.1)";
+                    this.context.stroke();
+                }
+            }
+        }
+    },
+
 
     // Replaces current barriers with a preset barrier. 0 for none.
     _placePresetBarrier: function (index) {
@@ -422,7 +605,7 @@ FluidDynamics.prototype = {
         for (var step=0; step<steps; step++) {
             this.solver.collide();
             this.solver.stream();
-            //if (this.tracers) this.moveTracers();
+            if (this.tracers) this._moveTracers();
             if (this.pushing) this._push(this.pushX, this.pushY, this.pushUX, this.pushUY);
             time++;
             if (showingPeriod && (barrierFy > 0) && (lastBarrierFy <=0)) {

@@ -120,7 +120,9 @@
             <input type="radio" id="radio2" value="1" name="radio"><label for="radio2">XVel</label><br>
             <input type="radio" id="radio3" value="2" name="radio"><label for="radio3">YVel</label><br>
             <input type="radio" id="radio4" value="3" name="radio"><label for="radio4">Speed</label><br>
-            <input type="radio" id="radio5" value="4" name="radio" checked="checked"><label for="radio5">Curl</label><br>
+            <input type="radio" id="radio5" value="4" name="radio" checked="checked"><label for="radio5">Curl</label><br>            
+            <input type="radio" id="radio6" value="5" name="radio"><label for="radio6">Pressure (fake)</label><br>
+            <input type="radio" id="radio7" value="6" name="radio"><label for="radio7">None</label><br>
         </div>
     </form>
     
@@ -134,7 +136,7 @@
         <div id="fluidSpeedSlider" class="standardSlider"></div>
     </div>
              
-    <!-- Brush settings -->
+    <!-- Brushes -->
     <div>
         <button class="brush_button" id="brushbutton_circle" onclick="setBrushType(this)" value="circle"><img src="brushbutton_circle.png" height=32 width=32 /></button>
         <button class="brush_button" id="brushbutton_square" onclick="setBrushType(this)" value="square"><img src="brushbutton_square.png" height=32 width=32 /></button>
@@ -150,6 +152,13 @@
         <div id="brushSizeSlider" class="standardSlider"></div>
     </div>
 
+    <!-- Settings -->
+    <div id="format">
+        <input type="checkbox" id="tracers" onclick="fds.tracers = this.checked; fds.resetTracers()"><label for="tracers">Tracers</label>
+        <input type="checkbox" id="flowlines" onclick="fds.flowlines = this.checked; "><label for="flowlines">Flowlines</label>        
+        <input type="checkbox" id="sensor" onclick="fds.showSensor = this.checked; "><label for="sensor">Sensor</label>        
+    </div>
+    
     <!-- Other stuff -->
 
     <div id="tester" style="width:600px;height:250px;"></div>
@@ -238,6 +247,10 @@
         $("#brushbutton_hline").button();
         $("#brushbutton_vline").button();
         $("#brushbutton_hand").button();
+
+        $("#tracers").button();
+        $("#flowlines").button();
+        $("#sensor").button();
 
         // hooks
         

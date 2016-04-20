@@ -24,8 +24,11 @@ function LBESolver_JS(xdim, ydim) {
     this.nSW = createArray(xdim*ydim);
     this.rho = createArray(xdim*ydim);			// macroscopic density
     this.ux = createArray(xdim*ydim);			// macroscopic velocity
-    this.uy = createArray(xdim*ydim);
-    this.curl = createArray(xdim*ydim);
+    this.uy = createArray(xdim * ydim);
+
+    // these are calculated only per frame, instead of per step.
+    this.curl = createArray(xdim * ydim);
+    this.pressure = createArray(xdim * ydim);
 
     this.barrier = new Array(xdim * ydim);		// boolean array of barrier locations
 }
@@ -69,6 +72,7 @@ LBESolver_JS.prototype = {
                 var uxuy2 = 2.0 * thisux * thisuy;
                 var u2 = ux2 + uy2;
                 var u215 = 1.5 * u2;
+                
                 this.n0[i] = _n0 + omega * (four9ths * thisrho * (1.0 - u215) - _n0);
                 this.nE[i] = _nE + omega * (one9thrho * (1.0 + ux3 + 4.5 * ux2 - u215) - _nE);
                 this.nW[i] = _nW + omega * (one9thrho * (1.0 - ux3 + 4.5 * ux2 - u215) - _nW);
@@ -80,7 +84,7 @@ LBESolver_JS.prototype = {
                 this.nSW[i] = _nSW + omega * (one36thrho * (1.0 - ux3 - uy3 + 4.5 * (u2 + uxuy2) - u215) - _nSW);
                 this.rho[i] = thisrho;
                 this.ux[i] = thisux;
-                this.uy[i] = thisuy
+                this.uy[i] = thisuy                
             }
         }
 
@@ -225,8 +229,12 @@ LBESolver_JS.prototype = {
         var uy = this.uy;
 
         for (var y=1; y<ydim-1; y++) {			// interior sites only; leave edges set to zero
-            for (var x=1; x<xdim-1; x++) {
-                this.curl[x+y*xdim] = uy[x+1+y*xdim] - uy[x-1+y*xdim] - ux[x+(y+1)*xdim] + ux[x+(y-1)*xdim];
+            for (var x = 1; x < xdim - 1; x++) {
+                var i = x + y * this.xdim;
+                this.curl[x + y * xdim] = uy[x + 1 + y * xdim] - uy[x - 1 + y * xdim] - ux[x + (y + 1) * xdim] + ux[x + (y - 1) * xdim];
+                var dt = 0.1; // no idea?
+                var vel = Math.sqrt(this.ux[i] * this.ux[i] + this.uy[i] * this.uy[i]) / dt;
+                this.pressure[i] = this.rho[i] * (1 / (vel + 1)) / 30;
             }
         }
     },
