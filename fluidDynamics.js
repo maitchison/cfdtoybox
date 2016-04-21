@@ -103,8 +103,8 @@ function FluidDynamics() {
     this.plotSelect = 4;
     this.barrierTemplate = 6;
 
-    this.tracers = false;
-    this.flowlines = false;
+    this.showTracers = false;
+    this.showFlowlines = false;
     this.showSensor = false;
     this.showForce = true;
 
@@ -113,6 +113,8 @@ function FluidDynamics() {
 
     // sensor
     this.sensor = new FDSSensor();
+    this.draggingSensor = false;
+    this.nearSensor = false;
 
     // pushing
     this.oldMouseX = -1;
@@ -121,6 +123,11 @@ function FluidDynamics() {
     this.pushY = 0;
     this.pushUX = 0;
     this.pushUY = 0;
+
+    // versions
+    this.versionData = [];
+    this.versionName = [];
+    this.defaultVersion = 0;
 
     // tracers
     this.nTracers = 144;
@@ -155,11 +162,10 @@ FluidDynamics.prototype = {
     constructor: FluidDynamics,
 
     // Resets the fluid dynamics simulation.
-    reset: function() {
-        this.pushing = false;
+    clear: function() {        
         this._setupColors();
-        this._placePresetBarrier(this.barrierTemplate)        
-        this._resetFluid();		
+        this.clearBarriers();
+        this.resetFluid();		
     },
     
     // Simulate function executes a bunch of steps and then schedules another call to itself:
@@ -203,6 +209,9 @@ FluidDynamics.prototype = {
         if (this.running) {
             stepCount += stepsPerFrame;
             var elapsedTime = (currentTime - startTime) / 1000;	// time in seconds            
+            if (this.ui.dragLabel != null) {
+                this.ui.dragLabel.innerHTML = "Lift:{0} Drag:{1} Lift to Drag:{2}".format(barrierFy.toFixed(3), barrierFx.toFixed(3), (barrierFy / (barrierFx+0.0001)).toFixed(3));
+            }
             if (this.ui.fpsLabel != null && frameTime > 0 && currentTime > lastFPSUpdate + 1000) {                                    
                 this.ui.fpsLabel.innerHTML = "{0} draw:{1}ms simulate:{2}ms total:{3}ms".format(
                     Number(1/frameTime).toFixed(1),
@@ -219,7 +228,7 @@ FluidDynamics.prototype = {
         if (!stable) {
             window.alert("The simulation has become unstable due to excessive fluid speeds.");
             this.startStop();
-            this._resetFluid();
+            this.resetFluid();
         }    
         lastUpdate = new Date().getTime()
     },
@@ -230,7 +239,7 @@ FluidDynamics.prototype = {
         var ydim = this.ydim;         
         for (var x = 0; x < xdim; x++) {
             for (var y = 0; y < ydim; y++) {
-                this.solver.barrier[x + y * xdim] = false;
+                this.setBarrier(x, y, 0);
             }
         }
     },
@@ -249,12 +258,12 @@ FluidDynamics.prototype = {
 
     // Add a barrier at a given grid coordinate location:
     addBarrier: function (x, y) {
-        this.setBarrier(x, y, true)
+        this.setBarrier(x, y, 1)
     },
 
     // Remove a barrier at a given grid coordinate location:
     removeBarrier: function (x, y) {
-        this.setBarrier(x, y, false)
+        this.setBarrier(x, y, 0)
     },
 
     // Function to start or pause the simulation:
@@ -270,6 +279,11 @@ FluidDynamics.prototype = {
             console.log("Stopping.");
             startButton.value = " Run ";
         }
+    },
+
+    // Function to initialize or re-initialize the fluid, based on speed slider setting:    
+    resetFluid: function () {        
+        this.solver.init(this.speed)
     },
 
     // Initialize the tracer particles:
@@ -289,13 +303,135 @@ FluidDynamics.prototype = {
                     nextY += dy;
                 }
                 i = Math.round(nextX) + Math.round(nextY) * this.xdim;
-                if (!this.solver.barrier[i])
+                if (this.solver.barrier[i] == 0)
                     break                
             }
         }
         this._paintCanvas();
     },
+      
+    // Saves the current settings and attributes for this simulation.
+    save: function (filename) {
+        console.log("Saving '{0}'".format(filename));
+
+        var v = new XMLWriter();
+        v.writeStartDocument(true);
+
+        v.writeStartElement('Save');
+
+        v.writeElementString('Name', 'Experiment1');
+
+        v.writeElementString('Date', new Date().getTime().toString());
+
+        v.writeStartElement('Sensor');
+        v.writeAttributeString('x', this.sensor.x);
+        v.writeAttributeString('y', this.sensor.y);
+        v.writeEndElement();
+
+        v.writeStartElement('Settings');
+        v.writeAttributeString('showSensor', this.showSensor);
+        v.writeAttributeString('showForce', this.showForce);
+        v.writeAttributeString('showTracers', this.showTracers);
+        v.writeAttributeString('showFlowlines', this.showFlowlines);
+        v.writeEndElement();
+
+        v.writeStartElement('Data');
+        v.writeElementString('Attributes', serialize(this.solver.barrier, true))
+        v.writeAttributeString('xdim', this.xdim);
+        v.writeAttributeString('ydim', this.ydim);        
+        v.writeEndElement();
+
+        v.writeEndElement();
+
+        v.writeEndDocument();
+        console.log(v.flush());
+
+    },
+
+    // For experiments with multiple verisons this selects the given verson number.
+    setVersion: function (versionIndex) {
+        if (this.versionData.length == 0) 
+            return;
+        this.solver.barrier = this.versionData[Number(versionIndex)];
+        this.resetFluid();
+    },
+
+    // Loads from given xml string, returns name as string.
+    load: function (xmlString) {
         
+        var txt = xmlString;
+
+        if (window.DOMParser) {
+            var parser = new DOMParser();
+            var xmlDoc = parser.parseFromString(txt, "text/xml");
+        } else {
+            window.alert("Sorry, this simulation is not supported in your browser.");
+        }
+
+        var saveNode = xmlDoc.getElementsByTagName("Save")[0];
+        var name = saveNode.getElementsByTagName("Name")[0].childNodes[0].nodeValue;
+        if (saveNode.getElementsByTagName("Description")[0] != null)
+            var description = saveNode.getElementsByTagName("Description")[0].childNodes[0].nodeValue;
+        var date = saveNode.getElementsByTagName("Date")[0].childNodes[0].nodeValue;
+
+        console.log("Loading '{0}'".format(name));
+
+        var sensorNode = saveNode.getElementsByTagName("Sensor")[0];
+
+        this.sensor.x = parseInt(sensorNode.getAttribute("x"));
+        this.sensor.y = parseInt(sensorNode.getAttribute("y"));
+        
+        var settingsNode = saveNode.getElementsByTagName("Settings")[0];
+
+        this.showSensor = settingsNode.getAttribute("showSensor") == "true";
+        this.showForce = settingsNode.getAttribute("showForce") == "true";
+        this.showTracers = settingsNode.getAttribute("showTracers") == "true";
+        this.showFlowlines = settingsNode.getAttribute("showFlowlines") == "true";
+
+        var dataNode = saveNode.getElementsByTagName("Data")[0];
+
+        this.solver.xdim = this.xdim = parseInt(dataNode.getAttribute("xdim"));
+        this.solver.ydim = this.ydim = parseInt(dataNode.getAttribute("ydim"));
+
+        this.solver.barrier = deserialize(dataNode.getElementsByTagName("Attributes")[0].childNodes[0].nodeValue);
+
+        // load versions
+        if (dataNode.getElementsByTagName("Versions")[0] != null) {
+            var versionsNodes = dataNode.getElementsByTagName("Versions")[0].getElementsByTagName("Version");
+            this.versionData = [];
+            this.versionName = [];
+            if (versionsNodes != null) {
+                var versionCount = versionsNodes.length;                
+                for (var i = 0; i < versionCount; i++) {
+                    var node = versionsNodes[Number(i)];
+                    this.versionData.push(deserialize(node.childNodes[0].nodeValue));
+                    this.versionName.push(node.getAttribute("name"));
+                }
+                this.defaultVersion = Number(dataNode.getElementsByTagName("Versions")[0].getAttribute("default"));
+                if (this.defaultVersion > 0) {
+                    console.log("Using version " + this.versionName[this.defaultVersion])
+                    this.solver.barrier = this.versionData[this.defaultVersion];
+                }
+            }
+        } else {
+            this.versionData = [];
+            this.versionName = [];
+        }
+
+        if (versionCount >= 1) {
+            console.log("Found multiple versions of experiment.");
+            console.log(this.versionName);
+        }
+        
+        this.resetFluid();
+        this.resetTracers();
+
+        this._paintCanvas();
+
+        return { name: name, description: description };
+        
+    },
+
     // ---------------------------
     // Private
     // --------------------------- 
@@ -308,7 +444,7 @@ FluidDynamics.prototype = {
             var index = roundedX + roundedY*this.xdim;
             this.tracerX[t] += this.solver.ux[index];
             this.tracerY[t] += this.solver.uy[index];
-            var collided = (this.solver.barrier[index]);
+            var collided = (this.solver.barrier[index] != 0);
             if (collided || (this.tracerX[t] > this.xdim - 1)) {                
                 this.tracerX[t] = 0;
                 this.tracerY[t] = Math.random() * this.ydim;
@@ -386,19 +522,21 @@ FluidDynamics.prototype = {
     _processInput: function() {
         
         // find mouse location in grid co-ords
-        this.grid = this._gridCoords(mouse.x, mouse.y);
+        this.grid = this._gridCoords(mouse.x, mouse.y);        
+        if (!mouse.isButtonDown) {
+            this.pushing = false;
+            this.draggingSensor = false;
+        }
+       
+        var dx = (this.grid.x - this.sensor.x) * this.pxPerSquare;
+        var dy = (this.grid.y - this.sensor.y) * this.pxPerSquare;
+        this.nearSensor = this.showSensor && (Math.sqrt(dx * dx + dy * dy) <= 8);
                 
         if (mouse.isButtonDown) {
+            if (this.nearSensor)            
+                this.draggingSensor = true;                            
 
-            if (this.showSensor) {                
-                var dx = (this.grid.x - this.sensor.x) * this.pxPerSquare;
-                var dy = (this.grid.y - this.sensor.y) * this.pxPerSquare;
-                if (Math.sqrt(dx * dx + dy * dy) <= 8) {
-                    draggingSensor = true;
-                }
-            }
-
-            if (draggingSensor) {                
+            if (this.draggingSensor) {                
                 this.sensor.x = clip(this.grid.x, 0, this.xdim - 1);
                 this.sensor.y = clip(this.grid.y, 0, this.ydim - 1);
                 this._paintCanvas();
@@ -416,19 +554,17 @@ FluidDynamics.prototype = {
                         this.pushing = true;
                     }
                     this.oldMouseX = mouse.x; this.oldMouseY = mouse.y;
-                } else {
-                    this.pushing = false;
+                } else {                    
                     this.oldMouseX = -1; this.oldMouseY = -1;
                 }
             } else {
                 // add barrier
-                this._applyBrush(this.grid.x, this.grid.y, this.brushType, this.brushSize, !key.shift);
+                var value = 1;
+                if (key.shift) value = 0;
+                this._applyBrush(this.grid.x, this.grid.y, this.brushType, this.brushSize, value);
                 this._paintCanvas();
             }
-        }
-
-        
-        
+        }                
     },
 
     // Draw a preview of current brush 
@@ -457,7 +593,7 @@ FluidDynamics.prototype = {
         
         for (var y = 0; y < ydim; y++) {
             for (var x = 0; x < xdim; x++) {
-                if (barrier[x + y * xdim]) {
+                if (barrier[x + y * xdim] == 1) {
                     cIndex = nColors + 1;	// kludge for barrier color which isn't really part of color map
                 } else {
                     cIndex = 0;
@@ -485,19 +621,23 @@ FluidDynamics.prototype = {
             }
         }
 
-        this._drawBrush();
+        if (!(this.nearSensor || this.draggingSensor))
+            this._drawBrush();
 
         this.context.putImageData(this.image, 0, 0);
 
         // Draw tracers, force vector, and/or sensor if appropriate:        
-        if (this.tracers) this._drawTracers();
-        if (this.flowlines) this._drawFlowlines();
+        if (this.showTracers) this._drawTracers();
+        if (this.showFlowlines) this._drawFlowlines();
         if (this.showSensor) this.sensor.draw(this);
     },
 
     // A special function that can be called by _applyBrush to paint potential barriers onto the canvas.
     _drawBarrier: function (x, y, value) {
-        this._colorSquare(Math.round(x), Math.round(y), 255, 255, 255)
+        if (value == 1)
+            this._colorSquare(Math.round(x), Math.round(y), 255, 255, 255)
+        else
+            this._colorSquare(Math.round(x), Math.round(y), 255, 0, 0)
     },
 
     // Draw the tracer particles:
@@ -605,7 +745,7 @@ FluidDynamics.prototype = {
         for (var step=0; step<steps; step++) {
             this.solver.collide();
             this.solver.stream();
-            if (this.tracers) this._moveTracers();
+            if (this.showTracers) this._moveTracers();
             if (this.pushing) this._push(this.pushX, this.pushY, this.pushUX, this.pushUY);
             time++;
             if (showingPeriod && (barrierFy > 0) && (lastBarrierFy <=0)) {
@@ -671,13 +811,7 @@ FluidDynamics.prototype = {
         }
 
     },
-
-    // Function to initialize or re-initialize the fluid, based on speed slider setting:    
-    _resetFluid: function () {
-        console.log("resting fluid. "+this.speed)
-        this.solver.init(this.speed)        
-    },
-
+    
     // "Drag" the fluid in a direction determined by the mouse (or touch) motion:
     // (The drag affects a "circle", 5 px in diameter, centered on the given coordinates.)
     _push: function (pushX, pushY, pushUX, pushUY) {
@@ -703,10 +837,7 @@ FluidDynamics.prototype = {
             }
 
         }   
-    },
-
-    
-    
+    },        
 }
     
 
@@ -728,7 +859,7 @@ var barrierxSum = 0;
 var barrierySum = 0;
 var barrierFx = 0.0;						// total force on all barrier sites
 var barrierFy = 0.0;
-var draggingSensor = false;
+
 var mouseIsDown = false;
 var mouseX, mouseY;							// mouse location in canvas coordinates
 var oldMouseX = -1, oldMouseY = -1;			// mouse coordinates from previous simulation frame

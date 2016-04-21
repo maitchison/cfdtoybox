@@ -30,7 +30,7 @@ function LBESolver_JS(xdim, ydim) {
     this.curl = createArray(xdim * ydim);
     this.pressure = createArray(xdim * ydim);
 
-    this.barrier = new Array(xdim * ydim);		// boolean array of barrier locations
+    this.barrier = createArray(xdim * ydim);		// integer array of barrier locations
 }
 
 LBESolver_JS.prototype = {
@@ -139,7 +139,7 @@ LBESolver_JS.prototype = {
         }
         for (var y = 1; y < ydim - 1; y++) {				// Now handle bounce-back from barriers
             for (var x = 1; x < xdim - 1; x++) {
-                if (barrier[x + y * xdim]) {
+                if (barrier[x + y * xdim] == 1) {
                     var index = x + y * xdim;
                     nE[x + 1 + y * xdim] = nW[index];
                     nW[x - 1 + y * xdim] = nE[index];

@@ -1,3 +1,5 @@
+"use strict";
+
 // This just gives me a basic string.format 
 if (!String.prototype.format) {
     String.prototype.format = function () {
@@ -40,6 +42,100 @@ function clip(value, min, max) {
     if (value > max)
         return max;
     return value;
+}
+
+// Fetches an XML document
+// Will block execution till file loads.  30 second timeout, after which null is returned.  Really bad idea 'busy sleep'.
+function fetch(filename) {
+    var xhttp = new XMLHttpRequest();
+    xhttp.onreadystatechange = function() {
+        if (xhttp.readyState == 4 && xhttp.status == 200) {
+            myFunction(xhttp);
+        }
+    };
+    var xmlDoc = null;
+
+    function myFunction(xml) {
+        xmlDoc = xml.responseXML;     
+    }
+
+    xhttp.open("GET", filename, true);
+    xhttp.send();
+
+    startTime = new Date().getTime();
+
+    while (xmlDoc == null) {
+        elapsed = (new Date().getTime()-startTime) / 1000; 
+        console.log("waiting {0} ".format(elapsed.toFixed(1)));
+        if (elapsed > 10) {
+            window.alert("Timeout");
+            return null;
+        }
+    }
+
+    return xmlDoc;
+
+    
+}
+
+// Serializes an array of floats to a (quite long) string.
+// optional RLE compression.
+function serialize(data, compress) {
+    if (compress == null) compress == true;
+    var len = data.length;
+    var stringData = []
+    var lastValue = data[0];
+    if (lastValue == null) lastValue = 0;
+
+    var runlength = 0;
+
+    function write(value, length) {
+        
+        // write the value.
+        if (length > 1)
+            stringData.push(value.toString() + ":" + length.toString())
+        else
+            stringData.push(value.toString())        
+    }
+
+    for (var i = 1; i < len; i++) {
+
+        runlength++;
+
+        var value = data[i];
+        // not sure why, but I'm getting undefinied in my array for some reason?
+        if (value == null) value = 0;
+
+        if (!compress || value != lastValue || i == (len - 1)) {
+            write(lastValue, runlength);
+            runlength = 0;
+        }
+        lastValue = value;
+    }
+
+    // write the final byte.
+    if (runlength >= 1)
+        write(lastValue, runlength);
+
+    return stringData.join(",");
+}
+
+// Deserializes a string into an array of floats.
+function deserialize(dataString) {
+    var stringParts = dataString.split(",");
+    var len = stringParts.length;
+    var data = []
+    for (var i = 0; i < len; i++) {
+        var entry = stringParts[i].split(':');
+        var value = entry[0];
+        if (entry.length == 2)
+            var count = entry[1]
+        else 
+            var count = 1;
+        for (var j = 0; j < count; j++)
+            data.push(value);        
+    }    
+    return data;
 }
 
 // -------------------------------------------------------------

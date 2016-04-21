@@ -45,6 +45,7 @@
         }
         
         #radioset label { width: 200px }
+        #versionSet label { width: 200px }
         
         
         .brush_button {
@@ -81,7 +82,7 @@
         }
 	</style>
 
-    <title>Experiment 1 - Drag coefficents</title>
+    <title>CFD Toy Box</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=620">
     <style>
@@ -95,11 +96,12 @@
 
     <body>
 
-    <h2>Fluid Dynamics Toy Box</h2>
+    <h2 id="mainTitle">Fluid Dynamics Toy Box</h2>
     
     <!-- Info label-->    
     <div>
-    Force (drag): <span id="dragLabel">...</span> 
+    Force <span id="dragLabel">...</span> 
+        <br />
     FPS: <span id="fpsLabel">...</span> 
     </div>    
 
@@ -108,8 +110,10 @@
 
     <!-- Reset / Play -->        
     <div>
-        <input id="resetFluidButton" type="button" onclick="fds._resetFluid()" value="Reset">	    
+        <input id="clearButton" type="button" onclick="fds.clear()" value="Clear">        
+        <input id="resetFluidButton" type="button" onclick="fds.resetFluid()" value="Reset">	    
         <input id="startButton" type="button" onclick="fds.startStop()" value="Start">        
+        <input id="loadButton" type="button" onclick="openLoadDialogue()" value="Load">
     </div>
 
     
@@ -154,225 +158,240 @@
 
     <!-- Settings -->
     <div id="format">
-        <input type="checkbox" id="tracers" onclick="fds.tracers = this.checked; fds.resetTracers()"><label for="tracers">Tracers</label>
-        <input type="checkbox" id="flowlines" onclick="fds.flowlines = this.checked; "><label for="flowlines">Flowlines</label>        
+        <input type="checkbox" id="tracers" onclick="fds.showTracers = this.checked; fds.resetTracers()"><label for="tracers">Tracers</label>
+        <input type="checkbox" id="flowlines" onclick="fds.showFlowlines = this.checked; "><label for="flowlines">Flowlines</label>        
         <input type="checkbox" id="sensor" onclick="fds.showSensor = this.checked; "><label for="sensor">Sensor</label>        
     </div>
-    
-    <!-- Other stuff -->
-
-    <div id="tester" style="width:600px;height:250px;"></div>
-
-    <script src="./Fluid Dynamics Simulation_files/barrierdata.js"></script>
-    <script src="helper.js"></script>
-    <script src="LBESolver_JS.js"></script>       
-    <script src="fluidDynamics.js"></script>   
-
-    <script src="./UI/external/jquery/jquery.js"></script>
-    <script src="./UI/jquery-ui.js"></script>
-    
-    <!-- Just an interface to the lattice_boltzmann settings -->
-    <script>
-
-        // Find best approximation for data using linear regression. 
-        // Uses a nieve iterative algorithm and assumes bias is zero.
-        function linearRegress(data) {
-            theta = 0.0;
-            n = results.length;
-            for (var i = 0; i < 99; i++) {
-                loss = 0.0;
-                grad = 0.0;
             
-                for (var index in results) {            
-                    loss += (0.5 * Math.pow(results[index] - index * theta,2)) / n;
-                    grad += (results[index] - index * theta) / n;
-                }
-                console.log(theta+":loss="+loss);
-                theta += grad * 0.1;
-            }
-            return theta;            
-        }
-        
-    
-        // initialization
-        fds = new FluidDynamics();
-        fds.reset();       
+    <br />
 
-        $(function () {
-            $("#fluidSpeedSlider").slider({
-                range: "min",
-                value: 0.10,
-                min: 0.00,
-                step: 0.0125,
-                max: 0.18,
-                slide: function (event, ui) {
-                    $("#fluidSpeedLabel").val(ui.value);
-                    fds.speed = ui.value;
+        <!-- Versions List -->
+        <form id="versionList" style="margin-top: 1em;">
+            <div id="versionSet">                
+            </div>
+        </form>
+
+        <!-- Load dialogue -->
+        <div id="load-dialog-form" title="Select Experiment">            
+            </br>
+            </br>
+            </br>
+            <form>                
+                <select name="experimentList" id="experimentList">
+                    <option selected="selected" value="0">Sandbox</option>
+                    <option value="1">Experiment1 - Lift</option>
+                    <option value="2">Experiment2 - Continuity Equation</option>
+                    <option value="3">Experiment3 - Drag</option>
+                    <option value="4">Experiment4 - Bernoulli Equation</option>
+                    <option value="5">Experiment5 - Sound Waves</option>
+                </select>
+                <input type="Load" tabindex="-1" style="position:absolute; top:-1000px">
+            </form>
+        </div>
+
+        <!-- Other stuff -->
+        <div>
+            <input type="button" id="savebutton" onclick="fds.save('data1.xml');" value="Save" />
+        </div>
+
+        <div>
+            <p id="summary"></p>
+        </div>
+
+        <div id="tester" style="width:600px;height:250px;"></div>
+
+        <script src="./Fluid Dynamics Simulation_files/barrierdata.js"></script>
+        <script src="helper.js"></script>
+        <script src="LBESolver_JS.js"></script>
+        <script src="fluidDynamics.js"></script>
+
+        <script src="./UI/external/jquery/jquery.js"></script>
+        <script src="./UI/jquery-ui.js"></script>
+        <script src="./UI/jquery-ui.js"></script>
+        <script src="./presets.js"></script>
+        <script src='js/XMLWriter-1.0.0.js'></script>
+
+        <!-- Just an interface to the lattice_boltzmann settings -->
+        <script>
+
+            // Updates the list of versions this experiment has.
+            function updateVersionList() {
+
+                list = document.getElementById('versionSet');
+
+                var newOptions = "";
+
+                // is this really the way to do this?
+                for (var i = 0; i < fds.versionName.length; i++) {
+                    var checked = "";
+                    if (i == fds.defaultVersion)
+                        checked = ' checked="checked"';
+                    newOptions += '<input type="radio" id="ver{0}" value="{0}" name="radio"{2}><label for="ver{0}">{1}</label><br>'.format(i.toString(), fds.versionName[Number(i)],checked);
+                }
+                list.innerHTML = newOptions;
+                $("#versionSet").buttonset();
+
+            }
+
+            // Select version number for experiments with multiple verisons.
+            function selectVersion(versionIndex) {
+
+            }
+
+            // Loads given experiment clearing the current context.
+            function loadExperiment(experimentNumber) {
+                var preset = fds.load(presets[experimentNumber]);
+                document.getElementById("mainTitle").innerHTML = preset.name;
+                document.getElementById("summary").innerHTML = preset.description;                
+                updateVersionList();
+            }
+
+            // Loads experiment selected in the experiments modal form.
+            function loadSelectedExperiment() {
+                var value = $("select[name=experimentList]").val();
+                loadExperiment(parseInt(value));
+                dialog.dialog( "close" );
+                return true;
+            }
+            
+            function openLoadDialogue() {
+                dialog.dialog("open");
+            }
+
+            // initialization
+            fds = new FluidDynamics();
+            fds.clear();
+            loadExperiment(1);
+
+            $(function () {
+                $("#fluidSpeedSlider").slider({
+                    range: "min",
+                    value: 0.10,
+                    min: 0.00,
+                    step: 0.0125,
+                    max: 0.18,
+                    slide: function (event, ui) {
+                        $("#fluidSpeedLabel").val(ui.value);
+                        fds.speed = ui.value;
+                    }
+                });
+                $("#fluidSpeedLabel").val($("#fluidSpeedSlider").slider("value"));
+            });
+
+            $(function () {
+                $("#brushSizeSlider").slider({
+                    range: "min",
+                    value: 1,
+                    min: 1,
+                    step: 1,
+                    max: 16,
+                    slide: function (event, ui) {
+                        $("#brushSizeLabel").val(ui.value);
+                        fds.brushSize = ui.value;
+                    }
+                });
+                $("#brushSizeLabel").val($("#brushSizeSlider").slider("value"));
+            });
+
+            dialog = $("#load-dialog-form").dialog({
+                autoOpen: false,
+                height: 300,
+                width: 350,
+                modal: true,                
+                buttons: {
+                    "Load": loadSelectedExperiment,
+                    Cancel: function () {
+                        dialog.dialog("close");
+                    }
+                },
+                close: function () {
+                    form[0].reset();                   
                 }
             });
-            $("#fluidSpeedLabel").val($("#fluidSpeedSlider").slider("value"));
-        });
-                            
-        $(function() {
-            $( "#brushSizeSlider" ).slider({
-                range: "min",
-                value: 1,
-                min: 1,
-                step: 1,
-                max: 16,                
-                slide: function( event, ui ) {
-                    $("#brushSizeLabel").val(ui.value);
-                    fds.brushSize = ui.value;
-                } 
+
+            form = dialog.find("form").on("submit", function (event) {
+                event.preventDefault();
+                loadSelectedExperiment();
             });
-            $("#brushSizeLabel").val($("#brushSizeSlider").slider("value"));
-        });
-        
-        // globals to our UI controls
-        var speedLabel = document.getElementById('fluidSpeedLabel');
-        var speedSlider = document.getElementById('fluidSpeedSlider');	
-        var plotButtons = document.getElementById('radioset');	
-        
-        // get jquery up and running
-        $( "#radioset" ).buttonset();
-        
-        $( "#resetFluidButton" ).button();
-        $( "#startButton" ).button();
-        
-        $( "#plotButton" ).button();                              
-        $("#plotButton2").button();
 
-        $("#brushbutton_circle").button();
-        $("#brushbutton_square").button();
-        $("#brushbutton_hline").button();
-        $("#brushbutton_vline").button();
-        $("#brushbutton_hand").button();
 
-        $("#tracers").button();
-        $("#flowlines").button();
-        $("#sensor").button();
+            // globals to our UI controls
+            var speedLabel = document.getElementById('fluidSpeedLabel');
+            var speedSlider = document.getElementById('fluidSpeedSlider');            
 
-        // hooks
-        
-        $( "#radioset" ).click(function() {
-            _setPlot()
-        });
-        
-        fds.ui.dragLabel = document.getElementById('dragLabel');	
-        fds.ui.fpsLabel = document.getElementById('fpsLabel');
-
-        // start the simulation on page load
-        fds.startStop();
-                        
-        var results = []
-        var sample_number
-        var sample_count 
-        var sample_step 
-        var sample_start
-        var sample_time = 1000
-        
-        function currentDragForceMagnitude() {
-            var Fx = barrierFx;
-            var Fy = barrierFy;
-            return Math.sqrt(Fx*Fx + Fy*Fy).toFixed(3);            
-        }
-
-        function setBrushType(button) {
-            console.log('button');
-            fds.brushType = button.value;
-            $("#brushbutton_circle").removeClass('selected_button');
-            $("#brushbutton_square").removeClass('selected_button');
-            $("#brushbutton_hline").removeClass('selected_button');
-            $("#brushbutton_vline").removeClass('selected_button');
-            $("#brushbutton_hand").removeClass('selected_button');
-            $(button).addClass('selected_button');
-        }
-        
-        // Takes the next sample for the plot
-        function nextSample() {
-            console.log("Sample."+sample_number)            
+            // get jquery up and running
+            $("#radioset").buttonset();
             
-            // Take sample from previous step.
-            results[fds.speed] = currentDragForceMagnitude()
-            
-            sample_number = sample_number + 1
+            $("#resetFluidButton").button();
+            $("#startButton").button();
+            $("#clearButton").button();
+            $("#loadButton").button();
 
-            // Set the next fluid speed
-            fds.speed = sample_start + sample_number * sample_step
-            
-            // Cue up a new step
-            if (sample_number < sample_count) {
-                window.setTimeout(nextSample,sample_time)
-            } else {
-                // otherwise plot the results
-                drawPlot()
+            $("#brushbutton_circle").button();
+            $("#brushbutton_square").button();
+            $("#brushbutton_hline").button();
+            $("#brushbutton_vline").button();
+            $("#brushbutton_hand").button();
+
+            $("#tracers").button();
+            $("#flowlines").button();
+            $("#sensor").button();
+
+            $("#savebutton").button();
+
+            $("#experimentList").selectmenu();
+
+            // hooks
+            $("#radioset").click(function () {
+                _setPlot()
+            });
+
+            $("#versionSet").click(function () {
+                _setVersion()
+            });
+
+            fds.ui.dragLabel = document.getElementById('dragLabel');
+            fds.ui.fpsLabel = document.getElementById('fpsLabel');
+
+            // start the simulation on page load
+            fds.startStop();
+
+            var results = []
+            var sample_number
+            var sample_count
+            var sample_step
+            var sample_start
+            var sample_time = 1000
+
+            function currentDragForceMagnitude() {
+                var Fx = barrierFx;
+                var Fy = barrierFy;
+                return Math.sqrt(Fx * Fx + Fy * Fy).toFixed(3);
             }
-        }
-        
-        function start_experiment(start,step,count) {
-            console.log("Beginning Auto Plot")
-            
-            sample_number = 0
-            sample_time = 1000
-            sample_count = count
-            sample_start = start
-            sample_step = step 
-            
-            fds.speed = sample_start
-            
-            initFluid()
-                   
-            setTimeout(nextSample,sample_time);
-        }
 
-        // Plot current drag on graph
-        function autoPlot_laminar() {
-            start_experiment(0.0,0.005,10)           
-        }
-        
-        // Plot current drag on graph
-        function autoPlot_nonlaminar() {
-            start_experiment(0.1,0.010,10)
-            
-        }
-        
-        function drawPlot() {
-            TESTER = document.getElementById('tester');
-            
-            console.log(results)
-            
-            var _x = []
-            var _y = []
-
-            for (var index in results) {            
-                _x.push(index)
-                _y.push(results[index])            
+            function _setPlot() {
+                value = $('input[name=radio]:checked', '#myform').val();
+                fds.plotSelect = value;
             }
-                
-            Plotly.plot( TESTER, [{
-            x: _x,
-            y: _y, }], {        
-            margin: { t: 0 } } );
-            
-            // stats analysis
-            theta = linearRegress(results);
-            console.log("Theta = "+theta)
-            max_x = _x[_x.length-1]
-            max_y = _y[_y.length-1]
-            Plotly.plot( TESTER, [{
-            x: [0,max_x],
-            y: [0,theta*max_x], }], {        
-            margin: { t: 0 } } );
-            
-        }
-                
-        function _setPlot() {
-            value = $('input[name=radio]:checked', '#myform').val();
-            fds.plotSelect = value;
-        }
-                     
 
-    </script>
+            function _setVersion() {
+                value = $('input[name=radio]:checked', '#versionList').val();
+                fds.setVersion(Number(value));
+                console.log("setting version to {0}".format(value));
+            }
 
-    </body>
+            function setBrushType(button) {
+                console.log('button');
+                fds.brushType = button.value;
+                $("#brushbutton_circle").removeClass('selected_button');
+                $("#brushbutton_square").removeClass('selected_button');
+                $("#brushbutton_hline").removeClass('selected_button');
+                $("#brushbutton_vline").removeClass('selected_button');
+                $("#brushbutton_hand").removeClass('selected_button');
+                $(button).addClass('selected_button');
+            }            
+
+        </script>
+
+</body>
  </html>
