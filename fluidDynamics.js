@@ -3,10 +3,12 @@
 /**
     Latice Boltzmann fluid dynamics simulation
     
-    Make sure to include 
-        helper.js
-        LBESolver_JS.js
-    
+    By Matthew Aitchison
+    2016/04/25
+
+    Based on Dan Scroeder's origional JavaScript code found at http://physics.weber.edu/schroeder/fluids/.
+    Please feel free to copy / use the code as you see fit.
+        
 */
 
 // -----------------------------------------------
@@ -96,7 +98,8 @@ function FluidDynamics() {
     
     // Config settings:        
     this.steps = 10;            // steps per draw (affects presentation speed of simulation)    
-    this.speed = 0.1;           // speed fluid travels at   
+    this.speed = 0.1;           // speed fluid travels at       
+    this.density = 1;         // density of incomming fluid
         
     this.contrast = 1.0;
     this.pxPerSquare = 4;
@@ -108,8 +111,12 @@ function FluidDynamics() {
     this.showSensor = false;
     this.showForce = true;
 
+    // the number of cells to ignore at the edge of the simulation.
+    this.border = 2;
+
     this.brushSize = 2;
     this.brushType = "push";
+    this.brushValue = 1;
 
     // sensor
     this.sensor = new FDSSensor();
@@ -185,6 +192,9 @@ FluidDynamics.prototype = {
         // Boundaries and input.    
         this._setBoundaries();    
         this._processInput();
+
+        // Stub: handle barriers, this should only be done on change.
+        this._updateInletsAndOutlets();
     
         // Run simulation    
         var simulationStartTime = new Date().getTime();
@@ -283,7 +293,7 @@ FluidDynamics.prototype = {
 
     // Function to initialize or re-initialize the fluid, based on speed slider setting:    
     resetFluid: function () {        
-        this.solver.init(this.speed)
+        this.solver.init(this.speed, this.density)
     },
 
     // Initialize the tracer particles:
@@ -436,6 +446,64 @@ FluidDynamics.prototype = {
     // Private
     // --------------------------- 
     
+    getBarrier: function (x, y) {
+        return this.solver.barrier[x + y * this.xdim];
+    },
+
+    // When inlets and outlets are places their orientation needs to be adjusted.  This function will orientate each inlet / outlet so that it is enabled
+    // only on it's open edges.
+    _updateInletsAndOutlets: function () {
+        var xdim = this.xdim;
+        var ydim = this.ydim;
+        
+        for (var y = 1; y < ydim - 1; y++) {
+            for (var x = 1; x < xdim - 1; x++) {
+                i = x + (y * xdim);
+                if (this.getBarrier(x, y) >= 2) {
+                    var n = Number(this.getBarrier(x, y + 1) == 0);
+                    var e = Number(this.getBarrier(x + 1, y) == 0);
+                    var s = Number(this.getBarrier(x, y - 1) == 0);
+                    var w = Number(this.getBarrier(x - 1, y) == 0);                    
+                    var ne = Number(this.getBarrier(x + 1, y + 1) == 0);
+                    var nw = Number(this.getBarrier(x - 1, y + 1) == 0);
+                    var se = Number(this.getBarrier(x + 1, y - 1) == 0);
+                    var sw = Number(this.getBarrier(x - 1, y - 1) == 0);
+                    // + ne * 16 + nw * 32 + se * 64 + sw * 128
+                    this.solver.barrierOrientationMask[i] = Number(n + e * 2 + s * 4 + w * 8);
+                } else this.solver.barrierOrientationMask[i] = 0;
+
+            }
+        }
+    },
+
+    // Returns the location of one random outlet.  May return null even if there are outlets.
+    _randomOutletLocation: function () {
+        for (var i = 0; i < 100; i ++) {
+            var x = Math.random() * this.xdim;
+            var y = Math.random() * this.ydim;
+            if (this.getBarrier(x,y) == 1)
+                return {x: x, y: y};
+        }
+        return null;
+    },
+
+    // Generates a new location for tracer.
+    _newTracerLocation: function () {
+        var x = 0;
+        var y = 0;
+        
+        if (this.speed > 0) {
+            // if we have speed in the wind tunnel just start them at the left edge.
+            x = 1;
+            y = Math.random() * this.ydim;
+        } else {
+            // otherwise give them a random location.
+            x = Math.random() * this.xdim;
+            y = Math.random() * this.ydim;
+        }
+        return {x: x, y: y};
+    },
+
     // Move the tracer particles:
     _moveTracers: function () {        
         for (var t=0; t<this.nTracers; t++) {
@@ -445,9 +513,11 @@ FluidDynamics.prototype = {
             this.tracerX[t] += this.solver.ux[index];
             this.tracerY[t] += this.solver.uy[index];
             var collided = (this.solver.barrier[index] != 0);
-            if (collided || (this.tracerX[t] > this.xdim - 1)) {                
-                this.tracerX[t] = 0;
-                this.tracerY[t] = Math.random() * this.ydim;
+            var hitEdge = (this.tracerX[t] > this.xdim - 1) || (this.tracerX[t] < 1) || (this.tracerY[t] < 1) || (this.tracerY[t] > this.ydim - 1);
+            if (collided || hitEdge) {                
+                var newLoc = this._newTracerLocation();
+                this.tracerX[t] = newLoc.x;
+                this.tracerY[t] = newLoc.y;
             }            
         }
     },
@@ -559,7 +629,7 @@ FluidDynamics.prototype = {
                 }
             } else {
                 // add barrier
-                var value = 1;
+                var value = this.brushValue;
                 if (key.shift) value = 0;
                 this._applyBrush(this.grid.x, this.grid.y, this.brushType, this.brushSize, value);
                 this._paintCanvas();
@@ -579,8 +649,8 @@ FluidDynamics.prototype = {
         var cIndex = 0;
         var contrast = Math.pow(1.2, Number(this.contrast));
         var plotType = this.plotSelect;
-
-        if (plotType == 4 || plotType == 5) this.solver.computeCurl();
+        
+        if (plotType == 4) this.solver.computeCurl();
         
         var rho = this.solver.rho;
         var ux = this.solver.ux;
@@ -589,30 +659,30 @@ FluidDynamics.prototype = {
         var barrier = this.solver.barrier;
         var xdim = this.xdim;
         var ydim = this.ydim;
-        var nColors = this.nColors;
+        var nColors = Number(this.nColors);
         
         for (var y = 0; y < ydim; y++) {
             for (var x = 0; x < xdim; x++) {
-                if (barrier[x + y * xdim] == 1) {
-                    cIndex = nColors + 1;	// kludge for barrier color which isn't really part of color map
+                var i = x + y * xdim;
+                if (barrier[i] >= 1) {
+                    // paint barriers and inlets / outlets.
+                    cIndex = nColors + Number(barrier[i]);             
                 } else {
                     cIndex = 0;
                     if (plotType == 0) {
-                        cIndex = Math.round(nColors * ((rho[x + y * xdim] - 1) * 6 * contrast + 0.5));
+                        cIndex = Math.round(nColors * ((rho[i] - 1) * 6 * contrast + 0.5));
                     } else if (plotType == 1) {
-                        cIndex = Math.round(nColors * (ux[x + y * xdim] * 2 * contrast + 0.5));
+                        cIndex = Math.round(nColors * (ux[i] * 2 * contrast + 0.5));
                     } else if (plotType == 2) {
-                        cIndex = Math.round(nColors * (uy[x + y * xdim] * 2 * contrast + 0.5));
+                        cIndex = Math.round(nColors * (uy[i] * 2 * contrast + 0.5));
                     } else if (plotType == 3) {
-                        var speed = Math.sqrt(ux[x + y * xdim] * ux[x + y * xdim] + uy[x + y * xdim] * uy[x + y * xdim]);
+                        var speed = Math.sqrt(ux[i] * ux[i] + uy[i] * uy[i]);
                         cIndex = Math.round(nColors * (speed * 4 * contrast));
                     } else if (plotType == 4) {
-                        cIndex = Math.round(nColors * (curl[x + y * xdim] * 5 * contrast + 0.5));
-                    } else if (plotType == 5) {                     
-                        cIndex = Math.round(nColors * (this.solver.pressure[x + y * xdim] * 5 * contrast + 0.5));
+                        cIndex = Math.round(nColors * (curl[i] * 5 * contrast + 0.5));                    
                     } else if (plotType == 6) {
                         cIndex = 200;
-                }                    
+                    }
                     if (cIndex < 0) cIndex = 0;
                     if (cIndex > nColors) cIndex = nColors;
                 }
@@ -630,6 +700,7 @@ FluidDynamics.prototype = {
         if (this.showTracers) this._drawTracers();
         if (this.showFlowlines) this._drawFlowlines();
         if (this.showSensor) this.sensor.draw(this);
+    
     },
 
     // A special function that can be called by _applyBrush to paint potential barriers onto the canvas.
@@ -640,13 +711,22 @@ FluidDynamics.prototype = {
             this._colorSquare(Math.round(x), Math.round(y), 255, 0, 0)
     },
 
+    // Returns if canvas location is in bounds or it.
+    _isInBounds: function (x, y) {
+        return ((x / this.pxPerSquare > this.border) &&
+            (y / this.pxPerSquare > this.border) &&
+            (x / this.pxPerSquare < this.xdim-this.border) &&
+            (y / this.pxPerSquare < this.ydim - this.border));
+    },
+
     // Draw the tracer particles:
     _drawTracers: function () {
         this.context.fillStyle = "rgb(150,150,150)";
         for (var t = 0; t < this.nTracers; t++) {            
             var canvasX = (this.tracerX[t] + 0.5) * this.pxPerSquare;            
             var canvasY = canvas.height - (this.tracerY[t]+0.5) * this.pxPerSquare;
-            this.context.fillRect(canvasX-1, canvasY-1, 2, 2);
+            if (this._isInBounds(canvasX, canvasY))
+                this.context.fillRect(canvasX-1, canvasY-1, 2, 2);
         }
     },
 
@@ -731,12 +811,12 @@ FluidDynamics.prototype = {
         var xdim = this.xdim;
         var ydim = this.ydim;
         for (var x=0; x<xdim; x++) {
-            this.solver.setEquilibrium(x, 0, u0, 0, 1);
-            this.solver.setEquilibrium(x, ydim - 1, u0, 0, 1);
+            this.solver.setEquilibrium(x, 0, u0, 0, this.density);
+            this.solver.setEquilibrium(x, ydim - 1, u0, 0, this.density);
         }
         for (var y=1; y<ydim-1; y++) {
-            this.solver.setEquilibrium(0, y, u0, 0, 1);
-            this.solver.setEquilibrium(xdim - 1, y, u0, 0, 1);
+            this.solver.setEquilibrium(0, y, u0, 0, this.density);
+            this.solver.setEquilibrium(xdim - 1, y, u0, 0, this.density);
         }
     },
 
@@ -768,9 +848,9 @@ FluidDynamics.prototype = {
         this.nColors = 400;
         var nColors = this.nColors;
 
-        this.redList = new Array(nColors+2);
-        this.greenList = new Array(nColors+2);
-        this.blueList = new Array(nColors + 2);
+        this.redList = new Array(nColors + 16);
+        this.greenList = new Array(nColors + 16);
+        this.blueList = new Array(nColors + 16);
         
         for (var c=0; c<=nColors; c++) {
             var r, g, b;
@@ -787,15 +867,27 @@ FluidDynamics.prototype = {
             }
             this.redList[c] = r; this.greenList[c] = g; this.blueList[c] = b;            
         }
-        this.redList[nColors+1] = 0; this.greenList[nColors+1] = 0; this.blueList[nColors+1] = 0;	// barriers are black        
+        this.redList[nColors + 1] = 0; this.greenList[nColors + 1] = 0; this.blueList[nColors + 1] = 0;	// barriers are black        
+        this.redList[nColors + 2] = 128; this.greenList[nColors + 2] = 128; this.blueList[nColors + 2] = 255;	// outlets are purble
+        this.redList[nColors + 3] = 255; this.greenList[nColors + 3] = 0; this.blueList[nColors + 3] = 255;	// inlets are pink
+        this.redList[nColors + 14] = 128; this.greenList[nColors + 14] = 128; this.blueList[nColors + 14] = 128;	// gray
+        this.redList[nColors + 15] = 255; this.greenList[nColors + 15] = 255; this.blueList[nColors + 15] = 255;	// white
     },
 
     // Color a single grid square in the image data array, one pixel at a time (rgb each in range 0 to 255):
     _colorSquare: function (x, y, r, g, b) {
-
-        if ((x < 0) || (y < 0) || (x >= this.xdim) || (y >= this.ydim))
+        
+        if ((x < 0) || (y < 0) || (x >= this.xdim) || (y >= this.ydim))         
             return;
 
+        if ((x < this.border) || (y < this.border) || (x >= this.xdim - this.border) || (y >= this.ydim - this.border)) {
+            // always draw borders as white.
+            r = 255;
+            g = 255;
+            b = 255;
+        }
+
+                   
         var flippedy = this.ydim - y - 1;			// put y=0 at the bottom
         var data = this.image.data
         var width = this.image.width

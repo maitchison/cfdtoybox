@@ -1,6 +1,13 @@
-﻿// I'm having trouble reading and writing XML from the local filesystem, so I've decided to just put the XML all in a file.
-// later on I'll store this in a SQL server which will allow users to save their own files and will be much cleaner.
+﻿/**
+    I'm having trouble reading and writing XML from the local filesystem, so I've decided to just put the XML all in a file.
+    later on I'll store this in a SQL server which will allow users to save their own files and will be much cleaner.
+    
+    By Matthew Aitchison
+    2016/04/25
 
+    Please feel free to copy / use the code as you see fit.
+        
+*/
 
 var presets = []
 
@@ -27,7 +34,7 @@ presets.push(
 	'   <Sensor x="75" y="30" />\n' +
 	'   <Settings showSensor="false" showForce="false" showTracers="false" showFlowlines="false" />\n' +
 	'   <Data xdim="150" ydim="60">\n' +
-	'       <Attributes>0:3322,1:63,0:83,1:61,0:87,1:59,0:90,1:58,0:92,1:53,0:97,1:48,0:102,1:44,0:107,1:40,0:111,1:31,0:120,1:26,0:125,1:19,0:133,1:15,0:4013</Attributes>\n' +
+	'       <Attributes>0:3322,1:63,0:83,1:61,0:87,1:59,0:90,1:58,0:92,1:53,0:97,1:48,0:102,1:44,0:107,1:40,0:111,1:31,0:120,1:26,0:125,1:19,0:133,1:15,0:4013</Attributes>\n' +    
     '       <Versions default="5">\n' +
     '           <Version name="Square">0:3164,1:16,0:134,1:16,0:134,1:16,0:134,1:16,0:134,1:16,0:134,1:16,0:134,1:16,0:134,1:16,0:134,1:16,0:134,1:16,0:134,1:16,0:134,1:16,0:134,1:16,0:134,1:16,0:134,1:16,0:134,1:16,0:3568</Version>\n' +
     '           <Version name="Line">0:3316,1,0:149,1,0:149,1,0:149,1,0:149,1,0:149,1,0:149,1,0:149,1,0:149,1,0:149,1,0:149,1,0:149,1,0:149,1,0:149,1,0:149,1,0:149,1,0:3431</Version>\n' +
@@ -40,7 +47,7 @@ presets.push(
 	'   </Data>\n' +
     '</Save>\n'
     );
-
+    
 presets.push(
     '<?xml version="1.0" encoding="ISO-8859-1" standalone="yes" ?>\n' +
     '<Save>\n' +

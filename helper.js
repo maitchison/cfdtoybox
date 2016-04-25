@@ -1,5 +1,15 @@
 "use strict";
 
+/**
+    Just some handy global functions.
+    
+    By Matthew Aitchison
+    2016/04/25
+
+    Please feel free to copy / use the code as you see fit.
+        
+*/
+
 // This just gives me a basic string.format 
 if (!String.prototype.format) {
     String.prototype.format = function () {
@@ -13,10 +23,13 @@ if (!String.prototype.format) {
     };
 }
 
-// Creates a new array of given size using the fastest format
+// Creates a new array of given size using the fastest format, and zeros the data.
 // This used tobe Float32Array, but a standard array is much faster
 function createArray(size) {
-    return new Array(size)
+    var result = new Array(size);
+    for (var i = 0; i < size; i++)
+        result[i] = 0;
+    return result;
 }
 
 // Functions to convert rgb to hex color string (from stackoverflow):
@@ -127,7 +140,7 @@ function deserialize(dataString) {
     var data = []
     for (var i = 0; i < len; i++) {
         var entry = stringParts[i].split(':');
-        var value = entry[0];
+        var value = Number(entry[0]);
         if (entry.length == 2)
             var count = entry[1]
         else 

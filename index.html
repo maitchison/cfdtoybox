@@ -1,4 +1,5 @@
 ﻿<!DOCTYPE html>
+
 <html>
 
     <head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
@@ -14,6 +15,27 @@
         .demoHeaders {
             margin-top: 2em;
         }
+
+        #column1 {
+            
+        }
+        #column2 {
+            
+        }
+        #column3 {
+            
+        }
+
+        .h2 {
+            border:0; color:#f6931f; font-weight:bold;
+        }
+
+        .column {
+            background-color: #ffffff;
+            float:left;
+            width: 300px
+        }
+
         #dialog-link {
             padding: .4em 1em .4em 20px;
             text-decoration: none;
@@ -44,13 +66,14 @@
             margin: 0 4px;
         }
         
-        #radioset label { width: 200px }
+        #displayTypeSet label { width: 200px }
         #versionSet label { width: 200px }
+        #brushTypeSet label { width: 200px }
         
         
         .brush_button {
-            padding: 3px 2px 0px 2px;            
-            color: black;
+            padding: 3px 2px 0px 2px;                        
+            color: black;            
         }
 
         .selected_button {
@@ -58,7 +81,8 @@
         }
 
         .standardSlider { 
-            width: 300px;                            
+            margin: auto;
+            width: 280px;                            
         }
         .ui-slider-range { background: #007fff; }
 
@@ -82,6 +106,11 @@
         }
 	</style>
 
+
+    <!------------------------------------------------------------->
+    <!--  TOP -- >
+    <!------------------------------------------------------------->
+    
     <title>CFD Toy Box</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=620">
@@ -113,70 +142,133 @@
         <input id="clearButton" type="button" onclick="fds.clear()" value="Clear">        
         <input id="resetFluidButton" type="button" onclick="fds.resetFluid()" value="Reset">	    
         <input id="startButton" type="button" onclick="fds.startStop()" value="Start">        
+        <!--            
+        not quite implemented yet...
         <input id="loadButton" type="button" onclick="openLoadDialogue()" value="Load">
+         -->
     </div>
 
-    
-    <!-- Visualization -->        
-    <form id="myform" style="margin-top: 1em;">
-        <div id="radioset">
-            <input type="radio" id="radio1" value="0" name="radio"><label for="radio1">Density</label><br>
-            <input type="radio" id="radio2" value="1" name="radio"><label for="radio2">XVel</label><br>
-            <input type="radio" id="radio3" value="2" name="radio"><label for="radio3">YVel</label><br>
-            <input type="radio" id="radio4" value="3" name="radio"><label for="radio4">Speed</label><br>
-            <input type="radio" id="radio5" value="4" name="radio" checked="checked"><label for="radio5">Curl</label><br>            
-            <input type="radio" id="radio6" value="5" name="radio"><label for="radio6">Pressure (fake)</label><br>
-            <input type="radio" id="radio7" value="6" name="radio"><label for="radio7">None</label><br>
+
+    <!------------------------------------------------------------->
+    <!--  MIDDLE: Display / Draw / Experiment Settings -- >
+    <!------------------------------------------------------------->
+    <div style="align-content:center; margin:auto; width: 900px;">
+        <div id="column1" class="column">
+
+            <!-- Display -->
+            <h2 class="h2">Display</h2>
+
+            <!-- Display type -->
+            <form id="myform" style="margin-top: 1em;">
+                <div id="displayTypeSet">
+                    <input type="radio" id="radio1" value="0" name="radio"><label for="radio1">Density</label><br>
+                    <input type="radio" id="radio2" value="1" name="radio"><label for="radio2">XVel</label><br>
+                    <input type="radio" id="radio3" value="2" name="radio"><label for="radio3">YVel</label><br>
+                    <input type="radio" id="radio4" value="3" name="radio"><label for="radio4">Speed</label><br>
+                    <input type="radio" id="radio5" value="4" name="radio" checked="checked"><label for="radio5">Curl</label><br>
+                    <input type="radio" id="radio7" value="6" name="radio"><label for="radio7">None</label><br>
+                </div>
+            </form>
+
+            <!-- Contrast Slider -->
+            </br>
+            <div>
+                <label for="contrastValue">Contrast:</label>
+                <input type="text" id="contrastLabel" readonly style="border:0; color:#f6931f; font-weight:bold;">
+                <div id="contrastSlider" class="standardSlider"></div>
+            </div>
+
+            <!-- Display toggles -->
+            </br>
+            <div id="format">
+                <input type="checkbox" id="tracers" onclick="fds.showTracers = this.checked; fds.resetTracers()"><label for="tracers">Tracers</label>
+                <input type="checkbox" id="flowlines" onclick="fds.showFlowlines = this.checked; "><label for="flowlines">Flowlines</label>
+                <input type="checkbox" id="sensor" onclick="fds.showSensor = this.checked; "><label for="sensor">Sensor</label>
+            </div>
+
+
         </div>
-    </form>
+        <div id="column2" class="column">
+
+            <!-- Draw -->
+            <h2 class="h2">Draw</h2>
+
+            <!-- Brushe Shape -->
+            <div id="brushShapeSet">
+                <button class="brush_button" id="brushbutton_circle" onclick="setBrushType(this)" value="circle"><img src="brushbutton_circle.png" height=24 width=24 /></button>
+                <button class="brush_button" id="brushbutton_square" onclick="setBrushType(this)" value="square"><img src="brushbutton_square.png" height=24 width=24 /></button>
+                <button class="brush_button" id="brushbutton_hline" onclick="setBrushType(this)" value="hline"><img src="brushbutton_hline.png" height=24 width=24 /></button>
+                <button class="brush_button" id="brushbutton_vline" onclick="setBrushType(this)" value="vline"><img src="brushbutton_vline.png" height=24 width=24 /></button>
+                <button class="brush_button selected_button" id="brushbutton_hand" onclick="setBrushType(this)" value="push"><img src="brushbutton_hand.png" height=24 width=24 /></button>
+            </div>
+
+            <!-- Brush Type -->
+            <br />
+            <form>
+                <div id="brushValueSet">
+                    <input type="radio" id="brushValue1" value="1" name="radio" checked="checked"><label for="brushValue1">Barrier</label>
+                    <input type="radio" id="brushValue2" value="2" name="radio"><label for="brushValue2">Outlet</label>
+                    <input type="radio" id="brushValue3" value="3" name="radio"><label for="brushValue3">Inlet</label>
+                    <input type="radio" id="brushValue4" value="0" name="radio"><label for="brushValue4">Clear</label>
+                </div>
+            </form>
+
+            <br />
+            <div>
+                <label for="brushSizeLabel">Brush size:</label>
+                <input type="text" id="brushSizeLabel" readonly style="border:0; color:#f6931f; font-weight:bold;">
+
+                <div id="brushSizeSlider" class="standardSlider"></div>
+            </div>
+
+        </div>
+        <div id="column3" class="column">
+            <!-- Experiment -->
+            <h2 class="h2">Experiment</h2>
+
+            <!-- Versions List -->
+            <form id="versionList" style="margin-top: 1em;">
+                <select id="versionSet">
+                </select>
+            </form>
+            <br />
+
+            <!-- Fluid Speed Slider -->
+            <div>
+                <label for="fluidSpeedValue">Fluid speed:</label>
+                <input type="text" id="fluidSpeedLabel" readonly style="border:0; color:#f6931f; font-weight:bold;">
+
+                <div id="fluidSpeedSlider" class="standardSlider"></div>
+            </div>
+
+            <!-- Gravity tick box -->
+            <br />
+            <div>                
+                <label for="gravityCheckbox">Gravity:</label>
+                <input name="gravityCheckbox" value="False" type="checkbox" onclick="toggleGravity();">
+            </div>
+            <br />
+
+            <!-- Summary -->
+            <div>
+                <p id="summary" style ="width:280px; text-align: left "></p>
+            </div>
+
+        </div>
+    </div>
+    
     
     <br>
-          
-    <!-- Fluid Speed Slider -->    
-    <div>
-        <label for="fluidSpeedValue">Fluid speed:</label>
-        <input type="text" id="fluidSpeedLabel" readonly style="border:0; color:#f6931f; font-weight:bold;">
 
-        <div id="fluidSpeedSlider" class="standardSlider"></div>
-    </div>
-             
-    <!-- Brushes -->
-    <div>
-        <button class="brush_button" id="brushbutton_circle" onclick="setBrushType(this)" value="circle"><img src="brushbutton_circle.png" height=32 width=32 /></button>
-        <button class="brush_button" id="brushbutton_square" onclick="setBrushType(this)" value="square"><img src="brushbutton_square.png" height=32 width=32 /></button>
-        <button class="brush_button" id="brushbutton_hline" onclick="setBrushType(this)" value="hline"><img src="brushbutton_hline.png" height=32 width=32 /></button>
-        <button class="brush_button" id="brushbutton_vline" onclick="setBrushType(this)" value="vline"><img src="brushbutton_vline.png" height=32 width=32 /></button>                      
-        <button class="brush_button selected_button" id="brushbutton_hand" onclick="setBrushType(this)" value="push"><img src="brushbutton_hand.png" height=32 width=32 /></button>                              
-    </div>
-
-    <div>
-        <label for="brushSizeLabel">Brush size:</label>
-        <input type="text" id="brushSizeLabel" readonly style="border:0; color:#f6931f; font-weight:bold;">
-
-        <div id="brushSizeSlider" class="standardSlider"></div>
-    </div>
-
-    <!-- Settings -->
-    <div id="format">
-        <input type="checkbox" id="tracers" onclick="fds.showTracers = this.checked; fds.resetTracers()"><label for="tracers">Tracers</label>
-        <input type="checkbox" id="flowlines" onclick="fds.showFlowlines = this.checked; "><label for="flowlines">Flowlines</label>        
-        <input type="checkbox" id="sensor" onclick="fds.showSensor = this.checked; "><label for="sensor">Sensor</label>        
-    </div>
-            
     <br />
 
-        <!-- Versions List -->
-        <form id="versionList" style="margin-top: 1em;">
-            <div id="versionSet">                
-            </div>
-        </form>
 
         <!-- Load dialogue -->
         <div id="load-dialog-form" title="Select Experiment">            
             </br>
             </br>
             </br>
-            <form>                
+            <form>
                 <select name="experimentList" id="experimentList">
                     <option selected="selected" value="0">Sandbox</option>
                     <option value="1">Experiment1 - Lift</option>
@@ -187,16 +279,10 @@
                 </select>
                 <input type="Load" tabindex="-1" style="position:absolute; top:-1000px">
             </form>
+            
         </div>
-
-        <!-- Other stuff -->
-        <div>
-            <input type="button" id="savebutton" onclick="fds.save('data1.xml');" value="Save" />
-        </div>
-
-        <div>
-            <p id="summary"></p>
-        </div>
+  
+        
 
         <div id="tester" style="width:600px;height:250px;"></div>
 
@@ -225,11 +311,11 @@
                 for (var i = 0; i < fds.versionName.length; i++) {
                     var checked = "";
                     if (i == fds.defaultVersion)
-                        checked = ' checked="checked"';
-                    newOptions += '<input type="radio" id="ver{0}" value="{0}" name="radio"{2}><label for="ver{0}">{1}</label><br>'.format(i.toString(), fds.versionName[Number(i)],checked);
+                        checked = ' selected="selected"';                    
+                    newOptions += '<option id="ver{0}" value="{0}" name="radio"{2}><label for="ver{0}">{1}</label><br>'.format(i.toString(), fds.versionName[Number(i)],checked);                    
                 }
                 list.innerHTML = newOptions;
-                $("#versionSet").buttonset();
+                $("#versionSet").selectmenu();
 
             }
 
@@ -279,6 +365,22 @@
             });
 
             $(function () {
+                $("#contrastSlider").slider({
+                    range: "min",
+                    value: 0,
+                    min: -10,
+                    step: 0.01,
+                    max: 10,
+                    slide: function (event, ui) {
+                        $("#contrastLabel").val(ui.value);                        
+                        fds.contrast = ui.value;
+                    }
+                });
+                $("#contrastLabel").val($("#contrastSlider").slider("value"));
+            });
+
+
+            $(function () {
                 $("#brushSizeSlider").slider({
                     range: "min",
                     value: 1,
@@ -320,7 +422,9 @@
             var speedSlider = document.getElementById('fluidSpeedSlider');            
 
             // get jquery up and running
-            $("#radioset").buttonset();
+            $("#displayTypeSet").buttonset();
+            $("#brushShapeSet").buttonset();
+            $("#brushValueSet").buttonset();                        
             
             $("#resetFluidButton").button();
             $("#startButton").button();
@@ -333,6 +437,11 @@
             $("#brushbutton_vline").button();
             $("#brushbutton_hand").button();
 
+            $("#attribute_button_barrier").button();
+            $("#attribute_button_inlet").button();
+            $("#attribute_button_outlet").button();
+            $("#attribute_button_clear").button();
+
             $("#tracers").button();
             $("#flowlines").button();
             $("#sensor").button();
@@ -340,16 +449,24 @@
             $("#savebutton").button();
 
             $("#experimentList").selectmenu();
+            $("#versionSet").selectmenu();
 
             // hooks
-            $("#radioset").click(function () {
+            $("#displayTypeSet").click(function () {
                 _setPlot()
             });
 
-            $("#versionSet").click(function () {
-                _setVersion()
+            $("#brushValueSet").click(function () {
+                _setBrushValue()
             });
 
+            $("#versionSet").selectmenu({          
+                change: function( event, data ) {
+                    _setVersion(data.item.value);                    
+                }
+            });
+
+            
             fds.ui.dragLabel = document.getElementById('dragLabel');
             fds.ui.fpsLabel = document.getElementById('fpsLabel');
 
@@ -374,23 +491,34 @@
                 fds.plotSelect = value;
             }
 
-            function _setVersion() {
-                value = $('input[name=radio]:checked', '#versionList').val();
+            function _setVersion(value) {
                 fds.setVersion(Number(value));
                 console.log("setting version to {0}".format(value));
             }
 
+            function _setBrushValue() {
+                value = $('input[name=radio]:checked', '#brushValueSet').val();
+                fds.brushValue = Number(value);
+                console.log("setting brush value to {0}".format(value));
+            }
+
             function setBrushType(button) {
-                console.log('button');
-                fds.brushType = button.value;
+                fds.brushType = button.value;               
                 $("#brushbutton_circle").removeClass('selected_button');
                 $("#brushbutton_square").removeClass('selected_button');
                 $("#brushbutton_hline").removeClass('selected_button');
                 $("#brushbutton_vline").removeClass('selected_button');
                 $("#brushbutton_hand").removeClass('selected_button');
                 $(button).addClass('selected_button');
-            }            
+            }
 
+            function toggleGravity() {
+                if (fds.solver.gravity == 0)
+                    fds.solver.gravity = -0.00005
+                else
+                    fds.solver.gravity = 0;
+            }
+            
         </script>
 
 </body>

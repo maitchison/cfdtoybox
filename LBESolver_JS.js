@@ -1,6 +1,14 @@
 /*
     The Lattice boltzman solver using standard javascript.
+
     It's not very fast, but it'll do the trick.
+
+    By Matthew Aitchison
+    2016/04/25
+
+    Based on Dan Scroeder's origional JavaScript code found at http://physics.weber.edu/schroeder/fluids/.
+    Please feel free to copy / use the code as you see fit.
+        
 */
 
 
@@ -12,6 +20,7 @@ function LBESolver_JS(xdim, ydim) {
     this.xdim = xdim;
     this.ydim = ydim;
     this.viscosity = 0.020;
+    this.gravity = 0;
     
     this.n0 = createArray(xdim*ydim);			// microscopic densities along each lattice direction
     this.nN = createArray(xdim*ydim);
@@ -24,12 +33,13 @@ function LBESolver_JS(xdim, ydim) {
     this.nSW = createArray(xdim*ydim);
     this.rho = createArray(xdim*ydim);			// macroscopic density
     this.ux = createArray(xdim*ydim);			// macroscopic velocity
-    this.uy = createArray(xdim * ydim);
+    this.uy = createArray(xdim * ydim);    
 
-    // these are calculated only per frame, instead of per step.
+    this.barrierOrientationMask = createArray(xdim * ydim); // defines in which directions inlets / outlets will work.
+
+    // this is calculated only per frame, instead of per step.
     this.curl = createArray(xdim * ydim);
-    this.pressure = createArray(xdim * ydim);
-
+    
     this.barrier = createArray(xdim * ydim);		// integer array of barrier locations
 }
 
@@ -49,6 +59,15 @@ LBESolver_JS.prototype = {
             for (var x = 1; x < xdim - 1; x++) {
 
                 var i = x + y * xdim;		// array index for this lattice site
+
+                if (this.gravity != 0) {
+                    this.nN[i] += this.gravity;
+                    this.nNE[i] += this.gravity;
+                    this.nNW[i] += this.gravity;
+                    this.nS[i] -= this.gravity;
+                    this.nSE[i] -= this.gravity;
+                    this.nSW[i] -= this.gravity;
+                }
 
                 var _n0 = this.n0[i]
                 var _nN = this.nN[i]
@@ -72,7 +91,7 @@ LBESolver_JS.prototype = {
                 var uxuy2 = 2.0 * thisux * thisuy;
                 var u2 = ux2 + uy2;
                 var u215 = 1.5 * u2;
-                
+
                 this.n0[i] = _n0 + omega * (four9ths * thisrho * (1.0 - u215) - _n0);
                 this.nE[i] = _nE + omega * (one9thrho * (1.0 + ux3 + 4.5 * ux2 - u215) - _nE);
                 this.nW[i] = _nW + omega * (one9thrho * (1.0 - ux3 + 4.5 * ux2 - u215) - _nW);
@@ -82,6 +101,7 @@ LBESolver_JS.prototype = {
                 this.nSE[i] = _nSE + omega * (one36thrho * (1.0 + ux3 - uy3 + 4.5 * (u2 - uxuy2) - u215) - _nSE);
                 this.nNW[i] = _nNW + omega * (one36thrho * (1.0 - ux3 + uy3 + 4.5 * (u2 - uxuy2) - u215) - _nNW);
                 this.nSW[i] = _nSW + omega * (one36thrho * (1.0 - ux3 - uy3 + 4.5 * (u2 + uxuy2) - u215) - _nSW);
+                
                 this.rho[i] = thisrho;
                 this.ux[i] = thisux;
                 this.uy[i] = thisuy                
@@ -112,6 +132,7 @@ LBESolver_JS.prototype = {
         var xdim = this.xdim;
         var ydim = this.ydim;
         var barrier = this.barrier;
+        var rho = this.rho;
 
         for (var y = ydim - 2; y > 0; y--) {			// first start in NW corner...
             for (var x = 1; x < xdim - 1; x++) {
@@ -137,27 +158,42 @@ LBESolver_JS.prototype = {
                 nSW[x + y * xdim] = nSW[x + 1 + (y + 1) * xdim];		// and the southwest-moving particles
             }
         }
-        for (var y = 1; y < ydim - 1; y++) {				// Now handle bounce-back from barriers
+
+        // Now handle bounce-back from barriers
+        var inletStrength = 10 / 7;
+
+        for (var y = 1; y < ydim - 1; y++) {				
             for (var x = 1; x < xdim - 1; x++) {
-                if (barrier[x + y * xdim] == 1) {
-                    var index = x + y * xdim;
-                    nE[x + 1 + y * xdim] = nW[index];
-                    nW[x - 1 + y * xdim] = nE[index];
-                    nN[x + (y + 1) * xdim] = nS[index];
-                    nS[x + (y - 1) * xdim] = nN[index];
-                    nNE[x + 1 + (y + 1) * xdim] = nSW[index];
-                    nNW[x - 1 + (y + 1) * xdim] = nSE[index];
-                    nSE[x + 1 + (y - 1) * xdim] = nNW[index];
-                    nSW[x - 1 + (y - 1) * xdim] = nNE[index];
-                    // Keep track of stuff needed to plot force vector:
-                    barrierCount++;
-                    barrierxSum += x;
-                    barrierySum += y;
-                    barrierFx += nE[index] + nNE[index] + nSE[index] - nW[index] - nNW[index] - nSW[index];
-                    barrierFy += nN[index] + nNE[index] + nNW[index] - nS[index] - nSE[index] - nSW[index];
-                }
+                var index = x + y * xdim;
+                switch (barrier[x + y * xdim]) {
+                    case 1:                         
+                        nE[x + 1 + y * xdim] = nW[index];
+                        nW[x - 1 + y * xdim] = nE[index];
+                        nN[x + (y + 1) * xdim] = nS[index];
+                        nS[x + (y - 1) * xdim] = nN[index];
+                        nNE[x + 1 + (y + 1) * xdim] = nSW[index];
+                        nNW[x - 1 + (y + 1) * xdim] = nSE[index];
+                        nSE[x + 1 + (y - 1) * xdim] = nNW[index];
+                        nSW[x - 1 + (y - 1) * xdim] = nNE[index];
+                        // Keep track of stuff needed to plot force vector:
+                        barrierCount++;
+                        barrierxSum += x;
+                        barrierySum += y;
+                        barrierFx += nE[index] + nNE[index] + nSE[index] - nW[index] - nNW[index] - nSW[index];
+                        barrierFy += nN[index] + nNE[index] + nNW[index] - nS[index] - nSE[index] - nSW[index];
+                        break;
+                    case 2:
+                        this.setEquilibrium(x, y, 0, 0, inletStrength);
+                        break;
+                    case 3:
+                        this.setEquilibrium(x, y, 0, 0, 1 / inletStrength);
+                        break;
+                } 
             }
         }
+
+        
+
     },
 
     // Set all densities in a cell to their equilibrium values for a given velocity and density:
@@ -206,21 +242,20 @@ LBESolver_JS.prototype = {
     },
 
     // Initializes fluid to given speed.
-    init: function (initialFluidSpeed) {        
+    init: function (initialFluidSpeed, initialDensity) {        
 
         var xdim = this.xdim;
         var ydim = this.ydim;        
         
         for (var y = 0; y < ydim; y++) {
             for (var x = 0; x < xdim; x++) {
-                this.setEquilibrium(x, y, initialFluidSpeed, 0, 1);
+                this.setEquilibrium(x, y, initialFluidSpeed, 0, initialDensity);
                 this.curl[x + y * xdim] = 0.0;
             }
         }
     },
 
     // Compute the curl for plotting.
-    // todo: do this automatically after each frame .
     computeCurl: function () {
 
         var xdim = this.xdim;
@@ -234,7 +269,7 @@ LBESolver_JS.prototype = {
                 this.curl[x + y * xdim] = uy[x + 1 + y * xdim] - uy[x - 1 + y * xdim] - ux[x + (y + 1) * xdim] + ux[x + (y - 1) * xdim];
                 var dt = 0.1; // no idea?
                 var vel = Math.sqrt(this.ux[i] * this.ux[i] + this.uy[i] * this.uy[i]) / dt;
-                this.pressure[i] = this.rho[i] * (1 / (vel + 1)) / 30;
+                var netp = Math.abs(this.nE[i] - this.nW[i]) + Math.abs(this.nN[i] - this.nS[i]);                
             }
         }
     },
